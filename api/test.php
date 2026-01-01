@@ -21,12 +21,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit(0);
 }
 
-// Verify the shop is configured as main
-if (Configuration::get('STOCKPRICESYNC_SHOP_TYPE') != 'MAIN') {
+// Verify the shop is configured
+$shop_type = Configuration::get('STOCKPRICESYNC_SHOP_TYPE');
+if (empty($shop_type)) {
     http_response_code(403);
     die(json_encode([
         'success' => false,
-        'message' => 'This shop is not configured as main shop'
+        'message' => 'This shop is not configured for StockPriceSync'
     ]));
 }
 
@@ -49,56 +50,76 @@ try {
             $api_key = $matches[1];
         }
     }
-    
+
     // Verify API key
     if (empty($api_key)) {
         throw new Exception('API key not provided');
     }
-    
-    // Look up shop by API key
-    $shop = SPSRemoteShop::getByApiKey($api_key);
-    
-    if ($shop) {
-        // Shop exists and is active
-        
-        // Update URL if provided
-        $input = file_get_contents('php://input');
-        $data = json_decode($input, true);
-        
-        if ($data && !empty($data['shop_url']) && empty($shop->url)) {
-            $shop->url = $data['shop_url'];
-            $shop->update();
+
+    // Get request data
+    $input = file_get_contents('php://input');
+    $data = json_decode($input, true);
+
+    // Handle based on shop type
+    if ($shop_type == 'MAIN') {
+        // MAIN shop - verify API key against registered remote shops
+        $shop = SPSRemoteShop::getByApiKey($api_key);
+
+        if ($shop) {
+            // Shop exists and is active
+
+            // Update URL if provided
+            if ($data && !empty($data['shop_url']) && empty($shop->url)) {
+                $shop->url = $data['shop_url'];
+                $shop->update();
+            }
+
+            // Log successful connection test
+            $module = Module::getInstanceByName('stockpricesync');
+            $module->logSync(
+                $shop->id_shop_remote,
+                'both',
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                1,
+                'Connection test successful from ' . $shop->name
+            );
+
+            // Return success
+            echo json_encode([
+                'success' => true,
+                'message' => 'Connection established successfully with shop ' . $shop->name,
+                'shop_id' => $shop->id_shop_remote
+            ]);
+        } else {
+            // Check if it's an inactive shop
+            if (SPSRemoteShop::isApiKeyForInactiveShop($api_key)) {
+                throw new Exception('This shop is disabled in the main shop. Contact the main shop administrator to activate it.');
+            }
+
+            // Not found or invalid API key
+            throw new Exception('Shop not authorized. The provided API key does not match any registered shop.');
         }
-        
-        // Log successful connection test
-        $module = Module::getInstanceByName('stockpricesync');
-        $module->logSync(
-            $shop->id_shop_remote,
-            'both',
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            1,
-            'Connection test successful from ' . $shop->name
-        );
-        
+    } else {
+        // CHILD shop - verify API key against stored API key
+        $stored_api_key = Configuration::get('STOCKPRICESYNC_API_KEY');
+
+        if ($api_key !== $stored_api_key) {
+            throw new Exception('Invalid API key for this child shop');
+        }
+
         // Return success
+        $shop_name = Configuration::get('STOCKPRICESYNC_SHOP_NAME');
         echo json_encode([
             'success' => true,
-            'message' => 'Connection established successfully with shop ' . $shop->name,
-            'shop_id' => $shop->id_shop_remote
+            'message' => 'Connection established successfully with ' . $shop_name,
+            'shop_name' => $shop_name,
+            'shop_type' => 'CHILD'
         ]);
-    } else {
-        // Check if it's an inactive shop
-        if (SPSRemoteShop::isApiKeyForInactiveShop($api_key)) {
-            throw new Exception('This shop is disabled in the main shop. Contact the main shop administrator to activate it.');
-        }
-        
-        // Not found or invalid API key
-        throw new Exception('Shop not authorized. The provided API key does not match any registered shop.');
     }
 } catch (Exception $e) {
     // Log error

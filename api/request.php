@@ -116,14 +116,29 @@ try {
         $total_updates = count($all_updates);
         
         if ($total_updates > $batch_size) {
-            // Store updates in session for batching
-            $batch_id = md5($shop->id_shop_remote . '_' . time());
-            Context::getContext()->cookie->__set('stockpricesync_batch_' . $batch_id, serialize($all_updates));
-            Context::getContext()->cookie->write();
-            
+            // Store updates in temporary file for batching
+            $batch_id = md5($shop->id_shop_remote . '_' . time() . '_' . uniqid());
+
+            // Create temp directory if it doesn't exist
+            $temp_dir = _PS_MODULE_DIR_ . 'stockpricesync/temp/';
+            if (!is_dir($temp_dir)) {
+                mkdir($temp_dir, 0755, true);
+            }
+
+            // Save batch data to file
+            $batch_file = $temp_dir . 'batch_' . $batch_id . '.json';
+            file_put_contents($batch_file, json_encode([
+                'shop_id' => $shop->id_shop_remote,
+                'created' => time(),
+                'data' => $all_updates
+            ]));
+
+            // Clean old batch files (older than 1 hour)
+            cleanOldBatchFiles($temp_dir);
+
             // Calculate number of batches
             $batch_count = ceil($total_updates / $batch_size);
-            
+
             echo json_encode([
                 'success' => true,
                 'message' => 'Data will be provided in batches',
@@ -179,25 +194,56 @@ try {
 }
 
 /**
+ * Clean old batch files (older than specified time)
+ */
+function cleanOldBatchFiles($temp_dir, $max_age = 3600)
+{
+    if (!is_dir($temp_dir)) {
+        return;
+    }
+
+    $files = glob($temp_dir . 'batch_*.json');
+    $now = time();
+
+    foreach ($files as $file) {
+        if (is_file($file) && ($now - filemtime($file)) > $max_age) {
+            @unlink($file);
+        }
+    }
+}
+
+/**
  * Get updates for a specific batch
  */
 function getProductUpdatesForBatch($batch_number, $shop, $sync_type)
 {
-    $batch_id = Context::getContext()->cookie->{'stockpricesync_batch_' . $shop->id_shop_remote};
-    
-    if (!$batch_id) {
+    // Try to get batch_id from request
+    $input = file_get_contents('php://input');
+    $data = json_decode($input, true);
+    $batch_id = isset($data['batch_id']) ? $data['batch_id'] : '';
+
+    if (empty($batch_id)) {
         return [];
     }
-    
-    $all_updates = unserialize($batch_id);
-    
-    if (!is_array($all_updates)) {
+
+    // Load batch data from file
+    $temp_dir = _PS_MODULE_DIR_ . 'stockpricesync/temp/';
+    $batch_file = $temp_dir . 'batch_' . $batch_id . '.json';
+
+    if (!file_exists($batch_file)) {
         return [];
     }
-    
+
+    $batch_data = json_decode(file_get_contents($batch_file), true);
+
+    if (!$batch_data || !isset($batch_data['data']) || !is_array($batch_data['data'])) {
+        return [];
+    }
+
+    $all_updates = $batch_data['data'];
     $batch_size = 100;
     $start = $batch_number * $batch_size;
-    
+
     return array_slice($all_updates, $start, $batch_size);
 }
 

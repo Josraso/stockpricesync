@@ -168,7 +168,8 @@ $sql[] = 'CREATE TABLE IF NOT EXISTS `'._DB_PREFIX_.'stockpricesync_log` (
     INDEX `shop_product_idx` (`id_shop_remote`, `product_reference`),
     INDEX `date_idx` (`date_add`),
     INDEX `status_idx` (`status`),
-    INDEX `log_level_idx` (`log_level`)
+    INDEX `log_level_idx` (`log_level`),
+    INDEX `status_sync_date_idx` (`status`, `sync_type`, `date_add`)
 ) ENGINE='._MYSQL_ENGINE_.' DEFAULT CHARSET=utf8;';
 
         // Execute queries
@@ -529,11 +530,12 @@ if (Tools::isSubmit('process_queue')) {
                 // Get recent sync logs for this shop (child receives data)
                 $logs = Db::getInstance()->executeS('
                     SELECT * FROM `'._DB_PREFIX_.'stockpricesync_log`
-                    ORDER BY date_add DESC 
+                    ORDER BY date_add DESC
                     LIMIT 10
                 ');
-                
-                $view_data['recent_logs'] = $logs;
+
+                // Asignar directamente a Smarty (igual que en MAIN shop)
+                $this->context->smarty->assign('recent_logs', $logs);
             }
         }
         

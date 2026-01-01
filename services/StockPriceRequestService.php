@@ -357,7 +357,11 @@ class StockPriceRequestService
             curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
             curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, 0);
         }
-        
+
+        // Timeout settings to prevent hanging
+        curl_setopt($ch, CURLOPT_TIMEOUT, 30); // Max execution time: 30 seconds
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10); // Max connection time: 10 seconds
+
         // Execute and get response
         $response = curl_exec($ch);
         $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);

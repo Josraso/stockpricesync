@@ -1,0 +1,90 @@
+/**
+ * Stock & Price Synchronizer - Admin Styles
+ *
+ * This file contains common CSS styles for the admin panel
+ */
+
+/* General panel improvements */
+.stockpricesync-panel {
+    margin-bottom: 20px;
+}
+
+/* Sync status badges */
+.sync-status-success {
+    background-color: #28a745;
+    color: white;
+}
+
+.sync-status-error {
+    background-color: #dc3545;
+    color: white;
+}
+
+.sync-status-pending {
+    background-color: #ffc107;
+    color: #212529;
+}
+
+/* Connection details */
+.connection-details {
+    margin-top: 15px;
+    padding: 10px;
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+}
+
+.connection-details pre {
+    margin: 0;
+    padding: 10px;
+    background-color: #fff;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    font-size: 12px;
+}
+
+/* Stats cards */
+.stats-card {
+    padding: 15px;
+    background-color: #fff;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    text-align: center;
+}
+
+.stats-card h3 {
+    margin: 0;
+    font-size: 32px;
+    font-weight: bold;
+}
+
+.stats-card p {
+    margin: 5px 0 0;
+    color: #6c757d;
+}
+
+/* Table improvements */
+.table-stockpricesync {
+    font-size: 13px;
+}
+
+.table-stockpricesync td {
+    vertical-align: middle;
+}
+
+/* Loading spinner */
+.icon-spin {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* Responsive improvements */
+@media (max-width: 768px) {
+    .stats-card {
+        margin-bottom: 15px;
+    }
+}

@@ -494,6 +494,10 @@ class StockPriceSenderService
      */
     public function syncShop($shop, $sync_type = 'both')
     {
+        // Extend execution time to prevent timeout
+        set_time_limit(300); // 5 minutes
+        ignore_user_abort(true);
+
         // Get all products with their references
         $products = $this->getProductsWithReferences();
         
@@ -613,6 +617,10 @@ class StockPriceSenderService
      */
     public function syncAllShops($sync_type = 'both')
     {
+        // Extend execution time to prevent timeout
+        set_time_limit(300); // 5 minutes
+        ignore_user_abort(true);
+
         // Get all active shops
         $shops = SPSRemoteShop::getActiveShops();
         
@@ -705,7 +713,11 @@ class StockPriceSenderService
             curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
             curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, 0);
         }
-        
+
+        // Timeout settings to prevent hanging
+        curl_setopt($ch, CURLOPT_TIMEOUT, 30); // Max execution time: 30 seconds
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10); // Max connection time: 10 seconds
+
         // Execute and get response
         $response = curl_exec($ch);
         $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);

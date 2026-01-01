@@ -103,26 +103,29 @@
                     <i class="icon-refresh"></i> {l s='Pending Syncs' mod='stockpricesync'}
                 </div>
                 <div class="panel-body text-center">
-                    <h1>{if isset($pending_syncs)}{$pending_syncs}{else}0{/if}</h1>
-                    <a href="{$current_link}&view_logs=1" class="btn btn-default">
-                        <i class="icon-list-alt"></i> {l s='View Sync Logs' mod='stockpricesync'}
-                    </a>
+                    <h1 id="pending_count">{if isset($pending_syncs)}{$pending_syncs}{else}0{/if}</h1>
+                    <div id="auto_process_container" style="display:none; margin-top: 15px;">
+                        <div class="progress" style="height: 25px;">
+                            <div id="auto_process_bar" class="progress-bar progress-bar-striped active" role="progressbar" style="width: 0%; line-height: 25px;">
+                                <span id="auto_process_text">0%</span>
+                            </div>
+                        </div>
+                        <p id="auto_process_status" class="text-muted" style="margin-top: 10px;"></p>
+                        <button id="stop_auto_process" class="btn btn-warning btn-xs" style="margin-top: 5px;">
+                            <i class="icon-stop"></i> {l s='Stop' mod='stockpricesync'}
+                        </button>
+                    </div>
+                    <div id="normal_buttons">
+                        <button id="auto_process_all" class="btn btn-success" style="margin-top: 10px;">
+                            <i class="icon-magic"></i> {l s='Auto-Process All Queue' mod='stockpricesync'}
+                        </button>
+                        <a href="{$current_link}&view_logs=1" class="btn btn-default" style="margin-top: 10px;">
+                            <i class="icon-list-alt"></i> {l s='View Sync Logs' mod='stockpricesync'}
+                        </a>
+                    </div>
                 </div>
             </div>
         </div>
-        <form method="post" action="{$current_link}" class="margin-top-10">
-    <div class="form-group">
-        <label>{l s='Process queue items:' mod='stockpricesync'}</label>
-        <div class="input-group">
-            <input type="number" name="items_to_process" class="form-control" value="50" min="1" max="500">
-            <span class="input-group-btn">
-                <button type="submit" name="process_queue" class="btn btn-info">
-                    <i class="icon-cog"></i> {l s='Process Pending Queue' mod='stockpricesync'}
-                </button>
-            </span>
-        </div>
-    </div>
-</form>
         <div class="col-lg-4">
             <div class="panel">
                 <div class="panel-heading">
@@ -330,5 +333,109 @@
                 $("#reset_type_form").submit();
             }
         });
+
+        // Auto-process queue
+        var autoProcessing = false;
+        var autoProcessStop = false;
+
+        $("#auto_process_all").click(function() {
+            var pendingCount = parseInt($("#pending_count").text());
+
+            if (pendingCount === 0) {
+                alert('{l s="No items in queue to process" mod='stockpricesync' js=1}');
+                return;
+            }
+
+            if (!confirm('{l s="This will automatically process all pending queue items. Continue?" mod='stockpricesync' js=1}')) {
+                return;
+            }
+
+            startAutoProcessing(pendingCount);
+        });
+
+        $("#stop_auto_process").click(function() {
+            autoProcessStop = true;
+            $(this).prop('disabled', true).html('<i class="icon-spinner icon-spin"></i> {l s="Stopping..." mod='stockpricesync' js=1}');
+        });
+
+        function startAutoProcessing(totalItems) {
+            autoProcessing = true;
+            autoProcessStop = false;
+            var processedItems = 0;
+            var batchSize = 50;
+
+            $("#normal_buttons").hide();
+            $("#auto_process_container").show();
+            $("#auto_process_status").text('{l s="Starting automatic processing..." mod='stockpricesync' js=1}');
+
+            function processBatch() {
+                if (autoProcessStop) {
+                    $("#auto_process_status").html('<strong class="text-warning">{l s="Processing stopped by user" mod='stockpricesync' js=1}</strong>');
+                    setTimeout(function() {
+                        $("#auto_process_container").hide();
+                        $("#normal_buttons").show();
+                        location.reload();
+                    }, 2000);
+                    return;
+                }
+
+                $.ajax({
+                    url: '{$current_link|escape:'javascript':'UTF-8'}',
+                    type: 'POST',
+                    data: {
+                        process_queue: 1,
+                        items_to_process: batchSize,
+                        ajax: 1
+                    },
+                    success: function(response) {
+                        try {
+                            var data = typeof response === 'string' ? JSON.parse(response) : response;
+
+                            if (data.processed !== undefined) {
+                                processedItems += data.processed;
+                                var remaining = totalItems - processedItems;
+                                var percentage = Math.min(100, Math.round((processedItems / totalItems) * 100));
+
+                                $("#auto_process_bar").css('width', percentage + '%');
+                                $("#auto_process_text").text(percentage + '%');
+                                $("#auto_process_status").html(
+                                    '<strong>{l s="Processed:" mod='stockpricesync' js=1}</strong> ' + processedItems + ' / ' + totalItems +
+                                    '<br><strong>{l s="Remaining:" mod='stockpricesync' js=1}</strong> ' + Math.max(0, remaining) +
+                                    '<br><strong>{l s="Errors:" mod='stockpricesync' js=1}</strong> ' + (data.errors || 0)
+                                );
+                                $("#pending_count").text(Math.max(0, remaining));
+
+                                if (remaining > 0 && !autoProcessStop) {
+                                    setTimeout(processBatch, 500);
+                                } else {
+                                    $("#auto_process_status").html('<strong class="text-success">{l s="All items processed successfully!" mod='stockpricesync' js=1}</strong>');
+                                    $("#stop_auto_process").hide();
+                                    setTimeout(function() {
+                                        location.reload();
+                                    }, 2000);
+                                }
+                            } else {
+                                throw new Error('Invalid response');
+                            }
+                        } catch (e) {
+                            $("#auto_process_status").html('<strong class="text-danger">{l s="Error processing queue. Please try again." mod='stockpricesync' js=1}</strong>');
+                            setTimeout(function() {
+                                $("#auto_process_container").hide();
+                                $("#normal_buttons").show();
+                            }, 3000);
+                        }
+                    },
+                    error: function() {
+                        $("#auto_process_status").html('<strong class="text-danger">{l s="Connection error. Please check your internet connection." mod='stockpricesync' js=1}</strong>');
+                        setTimeout(function() {
+                            $("#auto_process_container").hide();
+                            $("#normal_buttons").show();
+                        }, 3000);
+                    }
+                });
+            }
+
+            processBatch();
+        }
     });
 </script>

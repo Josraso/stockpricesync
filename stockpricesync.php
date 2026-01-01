@@ -426,11 +426,23 @@ $sql[] = 'CREATE TABLE IF NOT EXISTS `'._DB_PREFIX_.'stockpricesync_log` (
 // Process queue manually
 if (Tools::isSubmit('process_queue')) {
     $items_to_process = (int)Tools::getValue('items_to_process', 50);
-    
+
     require_once(dirname(__FILE__).'/services/StockPriceSenderService.php');
     $sender = new StockPriceSenderService();
     $result = $sender->processQueue($items_to_process);
-    
+
+    // Handle AJAX requests
+    if (Tools::getValue('ajax')) {
+        header('Content-Type: application/json');
+        echo json_encode([
+            'success' => $result['success'],
+            'processed' => isset($result['processed']) ? $result['processed'] : 0,
+            'errors' => isset($result['errors']) ? $result['errors'] : 0,
+            'message' => isset($result['message']) ? $result['message'] : ''
+        ]);
+        die();
+    }
+
     if ($result['success']) {
         $confirmations[] = sprintf($this->l('Queue processed: %d items processed, %d errors'), $result['processed'], $result['errors']);
     } else {

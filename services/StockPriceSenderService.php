@@ -510,9 +510,12 @@ class StockPriceSenderService
         
         $batch_size = (int)Configuration::get('STOCKPRICESYNC_BATCH_SIZE');
         $total_products = count($products);
-        
-        // If too many products, use batch mode
-        if ($total_products > $batch_size) {
+
+        // Use queue mode for manual sync if more than 10 products to prevent timeout
+        // This ensures the request returns quickly while processing continues in background
+        $manual_sync_threshold = 10;
+
+        if ($total_products > $manual_sync_threshold) {
             // Add all to queue
             $queued = 0;
             
@@ -540,14 +543,25 @@ class StockPriceSenderService
                 }
             }
             
-            // Procesar inmediatamente un lote de la cola
-            $process_result = $this->processQueue($batch_size);
-            
+            // Process only a small initial batch (30 items) to return quickly
+            // Remaining items will be processed via cron or manual queue processing
+            $initial_batch = 30;
+            $process_result = $this->processQueue($initial_batch);
+
+            $remaining = $queued - $process_result['processed'];
+
             return [
                 'success' => true,
-                'message' => sprintf('Added %d products to queue for shop %s. Processed: %d', $queued, $shop->name, $process_result['processed']),
+                'message' => sprintf(
+                    '%d items added to queue for %s. Processed: %d, Remaining in queue: %d. Use "Process Queue" to continue.',
+                    $queued,
+                    $shop->name,
+                    $process_result['processed'],
+                    $remaining
+                ),
                 'queued' => $queued,
                 'processed' => $process_result['processed'],
+                'remaining' => $remaining,
                 'errors' => $process_result['errors']
             ];
         } else {

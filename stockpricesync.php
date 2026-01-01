@@ -437,6 +437,18 @@ if (Tools::isSubmit('process_queue')) {
         $errors[] = $this->l('Error processing queue: ') . $result['message'];
     }
 }
+
+        // Clear all logs
+        if (Tools::isSubmit('clear_all_logs') && Tools::isSubmit('confirm_clear')) {
+            $deleted = Db::getInstance()->delete('stockpricesync_log');
+
+            if ($deleted) {
+                $confirmations[] = $this->l('All synchronization logs have been deleted successfully.');
+            } else {
+                $errors[] = $this->l('Error deleting logs. Please try again.');
+            }
+        }
+
         // Display errors and confirmations
         if (!empty($errors)) {
             foreach ($errors as $error) {
@@ -666,7 +678,95 @@ if (Tools::isSubmit('process_queue')) {
             }
         } else {
             if (Tools::isSubmit('view_logs')) {
-                // Logs view
+                // Logs view for CHILD shop - procesamiento de filtros
+                $page = (int)Tools::getValue('page', 1);
+                $items_per_page = (int)Tools::getValue('items_per_page', 20);
+
+                // Procesar filtros (sin shop_id ya que CHILD solo tiene una tienda)
+                $filters = array();
+                $has_active_filters = false;
+
+                // Reset filters if requested
+                if (Tools::isSubmit('reset_filters')) {
+                    // No set filters
+                }
+                // Process filters
+                else {
+                    if (Tools::isSubmit('filter_logs') || Tools::getValue('date_from') || Tools::getValue('date_to') ||
+                        Tools::getValue('sync_type') || Tools::getValue('status') !== '' ||
+                        Tools::getValue('product_reference') || Tools::getValue('log_level') !== '' || Tools::getValue('search')) {
+
+                        if ($date_from = Tools::getValue('date_from')) {
+                            $filters['date_from'] = pSQL($date_from);
+                            $view_data['filter_date_from'] = $date_from;
+                            $has_active_filters = true;
+                        }
+
+                        if ($date_to = Tools::getValue('date_to')) {
+                            $filters['date_to'] = pSQL($date_to);
+                            $view_data['filter_date_to'] = $date_to;
+                            $has_active_filters = true;
+                        }
+
+                        if ($sync_type = Tools::getValue('sync_type')) {
+                            $filters['sync_type'] = pSQL($sync_type);
+                            $view_data['filter_sync_type'] = $sync_type;
+                            $has_active_filters = true;
+                        }
+
+                        if (($status = Tools::getValue('status')) !== '' && $status !== false) {
+                            $filters['status'] = (int)$status;
+                            $view_data['filter_status'] = (int)$status;
+                            $has_active_filters = true;
+                        }
+
+                        if ($product_reference = Tools::getValue('product_reference')) {
+                            $filters['product_reference'] = pSQL($product_reference);
+                            $view_data['filter_product_reference'] = $product_reference;
+                            $has_active_filters = true;
+                        }
+
+                        if (($log_level = Tools::getValue('log_level')) !== '' && $log_level !== false) {
+                            $filters['log_level'] = (int)$log_level;
+                            $view_data['filter_log_level'] = (int)$log_level;
+                            $has_active_filters = true;
+                        }
+
+                        if ($search = Tools::getValue('search')) {
+                            $filters['search'] = pSQL($search);
+                            $view_data['filter_search'] = $search;
+                            $has_active_filters = true;
+                        }
+                    }
+                }
+
+                $this->context->smarty->assign('has_active_filters', $has_active_filters);
+
+                // Recuperar los logs con filtros
+                require_once(_PS_MODULE_DIR_ . 'stockpricesync/classes/SyncLog.php');
+                $logs = SyncLog::getFilteredLogs($filters, $items_per_page, ($page - 1) * $items_per_page);
+
+                // Contar el total para la paginación
+                $total_logs = SyncLog::countFilteredLogs($filters);
+
+                // Asignar a Smarty
+                $this->context->smarty->assign('logs', $logs);
+                $this->context->smarty->assign('pagination_page', $page);
+                $this->context->smarty->assign('pagination_items_per_page', $items_per_page);
+                $this->context->smarty->assign('pagination_total_pages', ceil($total_logs / $items_per_page));
+
+                // Stats para el panel superior - con los mismos filtros
+                $stats = $this->getLogsStatistics($filters);
+
+                $this->context->smarty->assign('stats', $stats);
+
+                // Construir parámetros de URL para paginación
+                $pagination_url_params = '';
+                foreach ($filters as $key => $value) {
+                    $pagination_url_params .= '&'.$key.'='.urlencode($value);
+                }
+                $this->context->smarty->assign('pagination_url_params', $pagination_url_params);
+
                 $output .= $this->context->smarty->fetch($this->local_path . 'views/templates/admin/logs.tpl');
             } else {
                 // Child shop dashboard

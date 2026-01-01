@@ -206,12 +206,12 @@
                                 <td>
                                     {if $log.sync_type == 'stock' || $log.sync_type == 'both'}
                                         {if $log.quantity_old !== null && $log.quantity_new !== null}
-                                            {l s='Stock:' mod='stockpricesync'} {$log.quantity_old} ? {$log.quantity_new}<br>
+                                            {l s='Stock:' mod='stockpricesync'} {$log.quantity_old} <i class="icon-arrow-right"></i> {$log.quantity_new}<br>
                                         {/if}
                                     {/if}
                                     {if $log.sync_type == 'price' || $log.sync_type == 'both'}
                                         {if $log.price_old !== null && $log.price_new !== null}
-                                            {l s='Price:' mod='stockpricesync'} {displayPrice price=$log.price_old} ? {displayPrice price=$log.price_new}
+                                            {l s='Price:' mod='stockpricesync'} {displayPrice price=$log.price_old} <i class="icon-arrow-right"></i> {displayPrice price=$log.price_new}
                                         {/if}
                                     {/if}
                                 </td>

@@ -5,9 +5,18 @@
 <div class="panel">
     <div class="panel-heading">
         <i class="icon-list-alt"></i> {l s='Synchronization Logs - Stock & Price Synchronizer' mod='stockpricesync'}
-        <a href="{$current_link}" class="btn btn-default btn-xs pull-right">
-            <i class="icon-arrow-left"></i> {l s='Back to Dashboard' mod='stockpricesync'}
-        </a>
+        <div class="pull-right">
+            <form method="post" action="{$current_link}&view_logs=1" style="display:inline-block; margin-left: 5px;" id="clear_logs_form">
+                <input type="hidden" name="clear_all_logs" value="1">
+                <input type="hidden" name="confirm_clear" value="1">
+                <button type="button" class="btn btn-danger btn-xs" id="clear_logs_btn">
+                    <i class="icon-trash"></i> {l s='Clear All Logs' mod='stockpricesync'}
+                </button>
+            </form>
+            <a href="{$current_link}" class="btn btn-default btn-xs">
+                <i class="icon-arrow-left"></i> {l s='Back to Dashboard' mod='stockpricesync'}
+            </a>
+        </div>
     </div>
     
     {* Filters panel *}
@@ -461,7 +470,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Script para modal de mensajes
     var viewMessageLinks = document.querySelectorAll('.view-full-message');
     var messageContentElement = document.getElementById('full-message-content');
-    
+
     if (viewMessageLinks.length > 0 && messageContentElement) {
         viewMessageLinks.forEach(function(link) {
             link.addEventListener('click', function(e) {
@@ -472,7 +481,18 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         });
     }
-    
+
+    // Clear all logs button with confirmation
+    var clearLogsBtn = document.getElementById('clear_logs_btn');
+    if (clearLogsBtn) {
+        clearLogsBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            if (confirm('{l s="WARNING! This will permanently delete ALL synchronization logs. This action cannot be undone. Are you sure you want to continue?" mod='stockpricesync' js=1}')) {
+                document.getElementById('clear_logs_form').submit();
+            }
+        });
+    }
+
     // Inicializar datepicker
     if ($.fn.datepicker) {
         $('.datepicker').datepicker({

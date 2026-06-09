@@ -591,12 +591,8 @@ class StockPriceSenderService
                 }
                 
                 if ($sync_type == 'price' || $sync_type == 'both') {
-                    // Apply percentage if configured
-                    $adjusted_price = $product['price'];
-                    if ($shop->price_percentage != 0) {
-                        $adjusted_price = $product['price'] * (1 + ($shop->price_percentage / 100));
-                    }
-                    
+                    // Send base product price WITHOUT adjustment
+                    // Price percentage is applied on CHILD shop, not here
                     $result = $this->sendPriceToShop(
                         [
                             'id_shop_remote' => $shop->id_shop_remote,
@@ -606,7 +602,7 @@ class StockPriceSenderService
                         ],
                         $product['reference'],
                         $product['combination_reference'],
-                        $adjusted_price
+                        $product['price']  // Send original price, no adjustment here
                     );
                     
                     if ($result['success']) {
@@ -769,76 +765,80 @@ class StockPriceSenderService
 
     /**
      * Get all products with their references, stock and prices
+     * OPTIMIZED: Single query with JOINs instead of N+1 queries
      */
     private function getProductsWithReferences()
     {
-        $result = [];
-        
-        // Get products with references
-        $products = Db::getInstance()->executeS("
-            SELECT p.id_product, p.reference, ps.price
+        $id_shop = (int)Context::getContext()->shop->id;
+
+        // Get ALL products and combinations in a single optimized query with JOINs
+        $sql = "
+            SELECT
+                p.id_product,
+                p.reference AS product_reference,
+                ps.price AS base_price,
+                sa_product.quantity AS product_quantity,
+                pa.id_product_attribute,
+                pa.reference AS combination_reference,
+                pa.price AS price_impact,
+                sa_combo.quantity AS combination_quantity
             FROM "._DB_PREFIX_."product p
-            LEFT JOIN "._DB_PREFIX_."product_shop ps ON (p.id_product = ps.id_product AND ps.id_shop = ".(int)Context::getContext()->shop->id.")
+            LEFT JOIN "._DB_PREFIX_."product_shop ps
+                ON (p.id_product = ps.id_product AND ps.id_shop = {$id_shop})
+            LEFT JOIN "._DB_PREFIX_."stock_available sa_product
+                ON (p.id_product = sa_product.id_product AND sa_product.id_product_attribute = 0 AND sa_product.id_shop = {$id_shop})
+            LEFT JOIN "._DB_PREFIX_."product_attribute pa
+                ON (p.id_product = pa.id_product AND pa.reference != '')
+            LEFT JOIN "._DB_PREFIX_."stock_available sa_combo
+                ON (pa.id_product = sa_combo.id_product AND pa.id_product_attribute = sa_combo.id_product_attribute AND sa_combo.id_shop = {$id_shop})
             WHERE p.reference != ''
-            ORDER BY p.id_product
-        ");
-        
-        if (!$products) {
-            return $result;
+            ORDER BY p.id_product, pa.id_product_attribute
+        ";
+
+        $rows = Db::getInstance()->executeS($sql);
+
+        if (!$rows) {
+            return [];
         }
-        
-        foreach ($products as $product) {
-            $id_product = (int)$product['id_product'];
-            
-            // Get stock for the main product
-            $quantity = StockAvailable::getQuantityAvailableByProduct($id_product, 0);
-            
-            // Add main product
-            $result[] = [
-                'id_product' => $id_product,
-                'reference' => $product['reference'],
-                'combination_reference' => null,
-                'quantity' => (int)$quantity,
-                'price' => (float)$product['price']
-            ];
-            
-            // Get combinations if any
-            $combinations = Db::getInstance()->executeS("
-                SELECT pa.id_product_attribute, pa.reference
-                FROM "._DB_PREFIX_."product_attribute pa
-                WHERE pa.id_product = ".$id_product." AND pa.reference != ''
-            ");
-            
-            if ($combinations) {
-                foreach ($combinations as $combination) {
-                    $id_product_attribute = (int)$combination['id_product_attribute'];
-                    
-                    // Get stock for this combination
-                    $quantity = StockAvailable::getQuantityAvailableByProduct($id_product, $id_product_attribute);
-                    
-                    // Get price impact
-                    $combination_obj = new Combination($id_product_attribute);
-                    $impact = $combination_obj->price;
-                    
-                    // Calculate final price
-                    $price = (float)$product['price'];
-                    if ($impact != 0) {
-                        $price += $impact;
-                    }
-                    
-                    // Add combination
-                    $result[] = [
-                        'id_product' => $id_product,
-                        'id_product_attribute' => $id_product_attribute,
-                        'reference' => $product['reference'],
-                        'combination_reference' => $combination['reference'],
-                        'quantity' => (int)$quantity,
-                        'price' => $price
-                    ];
+
+        $result = [];
+        $processed_products = [];
+
+        foreach ($rows as $row) {
+            $id_product = (int)$row['id_product'];
+            $product_ref = $row['product_reference'];
+
+            // Add base product only once (first time we see this product)
+            if (!isset($processed_products[$id_product])) {
+                $result[] = [
+                    'id_product' => $id_product,
+                    'reference' => $product_ref,
+                    'combination_reference' => null,
+                    'quantity' => (int)$row['product_quantity'],
+                    'price' => (float)$row['base_price']
+                ];
+                $processed_products[$id_product] = true;
+            }
+
+            // Add combination if exists
+            if (!empty($row['id_product_attribute']) && !empty($row['combination_reference'])) {
+                // Calculate final combination price (base + impact)
+                $combo_price = (float)$row['base_price'];
+                if (!empty($row['price_impact'])) {
+                    $combo_price += (float)$row['price_impact'];
                 }
+
+                $result[] = [
+                    'id_product' => $id_product,
+                    'id_product_attribute' => (int)$row['id_product_attribute'],
+                    'reference' => $product_ref,
+                    'combination_reference' => $row['combination_reference'],
+                    'quantity' => (int)$row['combination_quantity'],
+                    'price' => $combo_price
+                ];
             }
         }
-        
+
         return $result;
     }
 }

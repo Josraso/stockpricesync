@@ -96,16 +96,14 @@ class StockPriceSenderService
         // Get product base price
         $base_price = (float)$product->price;
 
-        // Calculate final price (base + impact for combinations)
-        $price = $base_price + $price_impact;
-
         // Check if we're in batch mode or real-time
         $batch_size = (int)Configuration::get('STOCKPRICESYNC_BATCH_SIZE');
         $use_batch = count($shops) > $batch_size;
 
         if ($use_batch) {
             // Add to queue for batch processing
-            $result = $this->addToQueue($product_reference, $combination_reference, 'price', null, $price);
+            // Store base_price and price_impact separately so percentage can be applied correctly
+            $result = $this->addToQueue($product_reference, $combination_reference, 'price', null, $base_price, $price_impact);
 
             // Si se han añadido elementos a la cola, procesar uno o más elementos inmediatamente
             if ($result) {
@@ -115,20 +113,31 @@ class StockPriceSenderService
 
             return ['success' => true, 'queued' => true];
         } else {
-            // Send directly to each shop (NO apply price_percentage here, done in CHILD)
+            // Send directly to each shop
+            // Apply percentage correctly: (base * (1 + %)) + impact
             $results = [];
 
             foreach ($shops as $shop) {
+                $adjusted_base = $base_price;
+
+                // Apply percentage only to base price
+                if (isset($shop['price_percentage']) && $shop['price_percentage'] != 0) {
+                    $adjusted_base = $base_price * (1 + ($shop['price_percentage'] / 100));
+                }
+
+                // Final price = adjusted base + impact
+                $final_price = $adjusted_base + $price_impact;
+
                 $result = $this->sendPriceToShop(
                     $shop,
                     $product_reference,
                     $combination_reference,
-                    $price  // Send price with impact, NO percentage adjustment
+                    $final_price
                 );
 
                 $results[$shop['id_shop_remote']] = $result;
             }
-            
+
             return ['success' => true, 'results' => $results];
         }
     }
@@ -136,7 +145,7 @@ class StockPriceSenderService
     /**
      * Add an update to the queue
      */
-    public function addToQueue($product_reference, $combination_reference, $sync_type, $quantity = null, $price = null)
+    public function addToQueue($product_reference, $combination_reference, $sync_type, $quantity = null, $price = null, $price_impact = null)
     {
         try {
             // Check if already in queue
@@ -164,15 +173,19 @@ class StockPriceSenderService
                     'sync_type' => $sync_type == 'both' ? 'both' : (($sync_type == 'price' || $sync_type == 'stock') ? $sync_type : 'both'),
                     'date_upd' => $now
                 ];
-                
+
                 if ($quantity !== null) {
                     $data['quantity'] = (int)$quantity;
                 }
-                
+
                 if ($price !== null) {
                     $data['price'] = (float)$price;
                 }
-                
+
+                if ($price_impact !== null) {
+                    $data['price_impact'] = (float)$price_impact;
+                }
+
                 return Db::getInstance()->update(
                     'stockpricesync_queue',
                     $data,
@@ -188,6 +201,7 @@ class StockPriceSenderService
                         'sync_type' => $sync_type == 'both' ? 'both' : (($sync_type == 'price' || $sync_type == 'stock') ? $sync_type : 'both'),
                         'quantity' => $quantity !== null ? (int)$quantity : null,
                         'price' => $price !== null ? (float)$price : null,
+                        'price_impact' => $price_impact !== null ? (float)$price_impact : null,
                         'priority' => 1,
                         'status' => 'pending',
                         'attempts' => 0,
@@ -387,22 +401,28 @@ class StockPriceSenderService
                 if ($item['sync_type'] == 'price' || $item['sync_type'] == 'both') {
                     // Get shops that need price sync
                     $shops = SPSRemoteShop::getActiveShopsWithPriceSync();
-                    
+
                     foreach ($shops as $shop) {
                         try {
-                            // Apply percentage if configured
-                            $adjusted_price = $item['price'];
+                            $base_price = (float)$item['price'];
+                            $price_impact = isset($item['price_impact']) ? (float)$item['price_impact'] : 0;
+
+                            // Apply percentage ONLY to base price
+                            $adjusted_base = $base_price;
                             if (isset($shop['price_percentage']) && $shop['price_percentage'] != 0) {
-                                $adjusted_price = $item['price'] * (1 + ($shop['price_percentage'] / 100));
+                                $adjusted_base = $base_price * (1 + ($shop['price_percentage'] / 100));
                             }
-                            
+
+                            // Final price = adjusted base + original impact (unchanged)
+                            $final_price = $adjusted_base + $price_impact;
+
                             $result = $this->sendPriceToShop(
                                 $shop,
                                 $item['product_reference'],
                                 $item['combination_reference'],
-                                $adjusted_price
+                                $final_price
                             );
-                            
+
                             if (!$result['success']) {
                                 $success = false;
                                 $error_message .= 'Shop '.$shop['name'].': '.$result['message'].'; ';
@@ -527,18 +547,21 @@ class StockPriceSenderService
                         $product['reference'],
                         $product['combination_reference'],
                         'stock',
-                        $product['quantity']
+                        $product['quantity'],
+                        null,
+                        null
                     );
                     $queued++;
                 }
-                
+
                 if ($sync_type == 'price' || $sync_type == 'both') {
                     $this->addToQueue(
                         $product['reference'],
                         $product['combination_reference'],
                         'price',
                         null,
-                        $product['price']
+                        $product['price'],
+                        isset($product['price_impact']) ? $product['price_impact'] : 0
                     );
                     $queued++;
                 }
@@ -592,20 +615,31 @@ class StockPriceSenderService
                 }
                 
                 if ($sync_type == 'price' || $sync_type == 'both') {
-                    // Send base product price WITHOUT adjustment
-                    // Price percentage is applied on CHILD shop, not here
+                    $base_price = (float)$product['price'];
+                    $price_impact = isset($product['price_impact']) ? (float)$product['price_impact'] : 0;
+
+                    // Apply percentage ONLY to base price
+                    $adjusted_base = $base_price;
+                    if ($shop->price_percentage != 0) {
+                        $adjusted_base = $base_price * (1 + ($shop->price_percentage / 100));
+                    }
+
+                    // Final price = adjusted base + original impact (unchanged)
+                    $final_price = $adjusted_base + $price_impact;
+
                     $result = $this->sendPriceToShop(
                         [
                             'id_shop_remote' => $shop->id_shop_remote,
                             'name' => $shop->name,
                             'url' => $shop->url,
-                            'api_key' => $shop->api_key
+                            'api_key' => $shop->api_key,
+                            'price_percentage' => $shop->price_percentage
                         ],
                         $product['reference'],
                         $product['combination_reference'],
-                        $product['price']  // Send original price, no adjustment here
+                        $final_price
                     );
-                    
+
                     if ($result['success']) {
                         $processed++;
                     } else {
@@ -816,18 +850,16 @@ class StockPriceSenderService
                     'reference' => $product_ref,
                     'combination_reference' => null,
                     'quantity' => (int)$row['product_quantity'],
-                    'price' => (float)$row['base_price']
+                    'price' => (float)$row['base_price'],
+                    'price_impact' => 0  // No impact for base product
                 ];
                 $processed_products[$id_product] = true;
             }
 
             // Add combination if exists
             if (!empty($row['id_product_attribute']) && !empty($row['combination_reference'])) {
-                // Calculate final combination price (base + impact)
-                $combo_price = (float)$row['base_price'];
-                if (!empty($row['price_impact'])) {
-                    $combo_price += (float)$row['price_impact'];
-                }
+                $base_price = (float)$row['base_price'];
+                $price_impact = !empty($row['price_impact']) ? (float)$row['price_impact'] : 0;
 
                 $result[] = [
                     'id_product' => $id_product,
@@ -835,7 +867,8 @@ class StockPriceSenderService
                     'reference' => $product_ref,
                     'combination_reference' => $row['combination_reference'],
                     'quantity' => (int)$row['combination_quantity'],
-                    'price' => $combo_price
+                    'price' => $base_price,  // Store only base price
+                    'price_impact' => $price_impact  // Store impact separately
                 ];
             }
         }

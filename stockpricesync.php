@@ -51,6 +51,9 @@ class StockPriceSync extends Module
             return false;
         }
 
+        // Update existing tables (add missing columns)
+        $this->updateTables();
+
         // Register hooks
         if (!$this->registerHook('actionUpdateQuantity') ||
             !$this->registerHook('actionProductUpdate') ||
@@ -138,12 +141,14 @@ class StockPriceSync extends Module
             `sync_type` ENUM("stock", "price", "both") NOT NULL DEFAULT "both",
             `quantity` INT(11) DEFAULT NULL,
             `price` DECIMAL(20,6) DEFAULT NULL,
+            `price_impact` DECIMAL(20,6) DEFAULT NULL,
             `specific_price` TEXT DEFAULT NULL,
             `priority` TINYINT(1) UNSIGNED NOT NULL DEFAULT 1,
             `status` ENUM("pending", "processing", "completed", "error") NOT NULL DEFAULT "pending",
             `attempts` TINYINT(1) UNSIGNED NOT NULL DEFAULT 0,
             `date_add` DATETIME NOT NULL,
             `date_upd` DATETIME NOT NULL,
+            `message` TEXT DEFAULT NULL,
             PRIMARY KEY (`id_queue`),
             INDEX `product_idx` (`product_reference`, `combination_reference`),
             INDEX `status_idx` (`status`)
@@ -183,6 +188,32 @@ $sql[] = 'CREATE TABLE IF NOT EXISTS `'._DB_PREFIX_.'stockpricesync_log` (
     }
 
     /**
+     * Update database tables - add missing columns
+     */
+    private function updateTables()
+    {
+        // Add price_impact column if it doesn't exist
+        $columns = Db::getInstance()->executeS('SHOW COLUMNS FROM `'._DB_PREFIX_.'stockpricesync_queue`');
+        $column_names = array_column($columns, 'Field');
+
+        if (!in_array('price_impact', $column_names)) {
+            Db::getInstance()->execute('
+                ALTER TABLE `'._DB_PREFIX_.'stockpricesync_queue`
+                ADD COLUMN `price_impact` DECIMAL(20,6) DEFAULT NULL AFTER `price`
+            ');
+        }
+
+        if (!in_array('message', $column_names)) {
+            Db::getInstance()->execute('
+                ALTER TABLE `'._DB_PREFIX_.'stockpricesync_queue`
+                ADD COLUMN `message` TEXT DEFAULT NULL AFTER `date_upd`
+            ');
+        }
+
+        return true;
+    }
+
+    /**
      * Drop database tables
      */
     private function dropTables()
@@ -207,6 +238,9 @@ $sql[] = 'CREATE TABLE IF NOT EXISTS `'._DB_PREFIX_.'stockpricesync_log` (
      */
     public function getContent()
     {
+        // Auto-update tables on first access after upgrade
+        $this->updateTables();
+
         $output = '';
         $errors = array();
         $confirmations = array();

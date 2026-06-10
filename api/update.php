@@ -141,17 +141,17 @@ try {
         $new_base_price = (float)$data['price'];
         $new_price_impact = isset($data['price_impact']) ? (float)$data['price_impact'] : 0;
 
+        // ALWAYS update product base price first
+        $product->price = $new_base_price;
+        $product->update();
+
         if ($id_product_attribute > 0) {
-            // Update combination price impact ONLY (never touch it)
+            // Then update combination price impact
             $combination = new Combination($id_product_attribute);
             if (Validate::isLoadedObject($combination)) {
                 $combination->price = $new_price_impact;
                 $combination->update();
             }
-        } else {
-            // Update product base price
-            $product->price = $new_base_price;
-            $product->update();
         }
 
         $new_price = $new_base_price + $new_price_impact;

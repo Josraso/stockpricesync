@@ -132,16 +132,16 @@
                     <i class="icon-bolt"></i> {l s='Quick Actions' mod='stockpricesync'}
                 </div>
                 <div class="panel-body text-center">
-                    <form method="post" action="{$current_link}" id="sync_all_form">
-                        <button type="button" id="sync_all_shops_btn" class="btn btn-primary">
+                    <form method="post" action="{$current_link}">
+                        <button type="submit" name="sync_all_shops" class="btn btn-primary" onclick="return confirm('{l s='This will add ALL products to sync queue. After submit, use Auto-Process All Queue button to process them. Continue?' mod='stockpricesync' js=1}');">
                             <i class="icon-refresh"></i> {l s='Sync All Stores Now' mod='stockpricesync'}
                         </button>
-                        <input type="hidden" name="sync_all_shops" value="1">
                         <select name="sync_type" class="form-control margin-top-10">
                             <option value="both">{l s='Stock & Prices' mod='stockpricesync'}</option>
                             <option value="stock">{l s='Stock Only' mod='stockpricesync'}</option>
                             <option value="price">{l s='Prices Only' mod='stockpricesync'}</option>
                         </select>
+                        <p class="help-block">{l s='This will add items to queue. Then click "Auto-Process All Queue" to process them.' mod='stockpricesync'}</p>
                     </form>
                 </div>
             </div>
@@ -335,44 +335,6 @@
             }
         });
 
-        // Sync All Stores button - auto-start queue processing
-        $("#sync_all_shops_btn").click(function(e) {
-            e.preventDefault();
-
-            if (!confirm('{l s="This will sync ALL products to ALL stores and automatically process the queue. Continue?" mod='stockpricesync' js=1}')) {
-                return;
-            }
-
-            var btn = $(this);
-            btn.prop('disabled', true).html('<i class="icon-spinner icon-spin"></i> {l s="Adding to queue..." mod='stockpricesync' js=1}');
-
-            // Submit form via AJAX to add items to queue
-            $.ajax({
-                url: '{$current_link|escape:'javascript':'UTF-8'}',
-                type: 'POST',
-                data: $('#sync_all_form').serialize(),
-                success: function(response) {
-                    // Wait a moment for queue to update
-                    setTimeout(function() {
-                        // Get current pending count and start auto-processing
-                        var pendingCount = parseInt($("#pending_count").text());
-
-                        if (pendingCount > 0) {
-                            // Automatically start auto-processing
-                            startAutoProcessing(pendingCount);
-                        } else {
-                            alert('{l s="No items were added to queue. Check that you have products with references." mod='stockpricesync' js=1}');
-                            btn.prop('disabled', false).html('<i class="icon-refresh"></i> {l s="Sync All Stores Now" mod='stockpricesync' js=1}');
-                        }
-                    }, 1000);
-                },
-                error: function() {
-                    alert('{l s="Error adding items to queue. Please try again." mod='stockpricesync' js=1}');
-                    btn.prop('disabled', false).html('<i class="icon-refresh"></i> {l s="Sync All Stores Now" mod='stockpricesync' js=1}');
-                }
-            });
-        });
-
         // Auto-process queue
         var autoProcessing = false;
         var autoProcessStop = false;
@@ -452,18 +414,20 @@
 
                             if (data.processed !== undefined) {
                                 processedItems += data.processed;
-                                var remaining = totalItems - processedItems;
-                                var percentage = Math.min(100, Math.round((processedItems / totalItems) * 100));
+
+                                // Use REAL remaining count from database if provided
+                                var remaining = data.remaining !== undefined ? data.remaining : (totalItems - processedItems);
+                                var percentage = Math.min(100, Math.round(((totalItems - remaining) / totalItems) * 100));
 
                                 $("#auto_process_bar").css('width', percentage + '%');
                                 $("#auto_process_text").text(percentage + '%');
                                 $("#auto_process_status").html(
                                     '<strong>{l s="Processed:" mod='stockpricesync' js=1}</strong> ' + processedItems + ' / ' + totalItems +
-                                    '<br><strong>{l s="Remaining:" mod='stockpricesync' js=1}</strong> ' + Math.max(0, remaining) +
+                                    '<br><strong>{l s="Remaining:" mod='stockpricesync' js=1}</strong> ' + remaining +
                                     '<br><strong>{l s="Errors:" mod='stockpricesync' js=1}</strong> ' + (data.errors || 0) +
                                     '<br><small class="text-muted">{l s="Processing 3 batches in parallel" mod='stockpricesync' js=1}</small>'
                                 );
-                                $("#pending_count").text(Math.max(0, remaining));
+                                $("#pending_count").text(remaining);
                             } else {
                                 throw new Error('Invalid response');
                             }

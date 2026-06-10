@@ -433,11 +433,18 @@ if (Tools::isSubmit('process_queue')) {
 
     // Handle AJAX requests
     if (Tools::getValue('ajax')) {
+        // Get ACTUAL remaining count from database (not calculated)
+        $remaining = (int)Db::getInstance()->getValue('
+            SELECT COUNT(*) FROM `'._DB_PREFIX_.'stockpricesync_queue`
+            WHERE status = "pending"
+        ');
+
         header('Content-Type: application/json');
         echo json_encode([
             'success' => $result['success'],
             'processed' => isset($result['processed']) ? $result['processed'] : 0,
             'errors' => isset($result['errors']) ? $result['errors'] : 0,
+            'remaining' => $remaining,  // Real count from DB
             'message' => isset($result['message']) ? $result['message'] : ''
         ]);
         die();

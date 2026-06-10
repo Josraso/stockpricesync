@@ -124,14 +124,13 @@ class StockPriceSenderService
                     $final_base = $base_price * (1 + ($shop['price_percentage'] / 100));
                 }
 
-                // Final price = base + impact (impact never changes)
-                $final_price = $final_base + $price_impact;
-
+                // Send base price and impact separately (impact never changes)
                 $result = $this->sendPriceToShop(
                     $shop,
                     $product_reference,
                     $combination_reference,
-                    $final_price
+                    $final_base,
+                    $price_impact
                 );
 
                 $results[$shop['id_shop_remote']] = $result;
@@ -275,7 +274,7 @@ class StockPriceSenderService
     /**
      * Send price update to a specific shop
      */
-    private function sendPriceToShop($shop, $product_reference, $combination_reference, $price)
+    private function sendPriceToShop($shop, $product_reference, $combination_reference, $price, $price_impact = 0)
     {
         try {
             // Prepare data
@@ -284,6 +283,7 @@ class StockPriceSenderService
                 'product_reference' => $product_reference,
                 'combination_reference' => $combination_reference,
                 'price' => (float)$price,
+                'price_impact' => (float)$price_impact,
                 'update_type' => 'price'
             ];
             
@@ -411,14 +411,13 @@ class StockPriceSenderService
                                 $base_price = $base_price * (1 + ($shop['price_percentage'] / 100));
                             }
 
-                            // Final price = base + impact (impact never changes)
-                            $final_price = $base_price + $price_impact;
-
+                            // Send base price and impact separately (impact never changes)
                             $result = $this->sendPriceToShop(
                                 $shop,
                                 $item['product_reference'],
                                 $item['combination_reference'],
-                                $final_price
+                                $base_price,
+                                $price_impact
                             );
 
                             if (!$result['success']) {
@@ -612,13 +611,13 @@ class StockPriceSenderService
                         $base = $base * (1 + ($shop['price_percentage'] / 100));
                     }
 
-                    $final_price = $base + $impact;
-
+                    // Send base and impact separately (impact never changes)
                     $result = $this->sendPriceToShop(
                         $shop,
                         $product_data['reference'],
                         $product_data['combination_reference'],
-                        $final_price
+                        $base,
+                        $impact
                     );
                     if ($result['success']) {
                         $total_synced++;
@@ -758,9 +757,7 @@ class StockPriceSenderService
                         $base_price = $base_price * (1 + ($shop->price_percentage / 100));
                     }
 
-                    // Final price = base + impact (impact never changes)
-                    $final_price = $base_price + $price_impact;
-
+                    // Send base and impact separately (impact never changes)
                     $result = $this->sendPriceToShop(
                         [
                             'id_shop_remote' => $shop->id_shop_remote,
@@ -770,7 +767,8 @@ class StockPriceSenderService
                         ],
                         $product['reference'],
                         $product['combination_reference'],
-                        $final_price
+                        $base_price,
+                        $price_impact
                     );
 
                     if ($result['success']) {

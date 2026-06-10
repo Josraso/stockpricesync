@@ -132,30 +132,29 @@ try {
     // Update price if needed
     if (($data['update_type'] == 'price' || $data['update_type'] == 'both') && isset($data['price'])) {
         $product = new Product($id_product);
-        
+
         if (!Validate::isLoadedObject($product)) {
             throw new Exception('Could not load product with ID ' . $id_product);
         }
-        
+
         $old_price = $product->getPrice(true, $id_product_attribute);
-        $new_price = (float)$data['price'];
-        
+        $new_base_price = (float)$data['price'];
+        $new_price_impact = isset($data['price_impact']) ? (float)$data['price_impact'] : 0;
+
         if ($id_product_attribute > 0) {
-            // Update combination price
+            // Update combination price impact ONLY (never touch it)
             $combination = new Combination($id_product_attribute);
             if (Validate::isLoadedObject($combination)) {
-                // Calculate price impact
-                $base_price = $product->getPrice(true, 0);
-                $impact = $new_price - $base_price;
-                
-                $combination->price = $impact;
+                $combination->price = $new_price_impact;
                 $combination->update();
             }
         } else {
             // Update product base price
-            $product->price = $new_price;
+            $product->price = $new_base_price;
             $product->update();
         }
+
+        $new_price = $new_base_price + $new_price_impact;
         
         // Log the update
         $module->logSync(

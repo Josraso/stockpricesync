@@ -146,8 +146,34 @@
                 </div>
             </div>
         </div>
+        <div class="col-lg-4">
+            <div class="panel">
+                <div class="panel-heading">
+                    <i class="icon-search"></i> {l s='Sync Single Product' mod='stockpricesync'}
+                </div>
+                <div class="panel-body">
+                    <form method="post" action="{$current_link}">
+                        <div class="form-group">
+                            <label>{l s='Product Reference' mod='stockpricesync'}</label>
+                            <input type="text" name="product_reference" class="form-control" placeholder="{l s='Enter product reference...' mod='stockpricesync'}" required>
+                        </div>
+                        <div class="form-group">
+                            <select name="sync_type_single" class="form-control">
+                                <option value="both">{l s='Stock & Prices' mod='stockpricesync'}</option>
+                                <option value="stock">{l s='Stock Only' mod='stockpricesync'}</option>
+                                <option value="price">{l s='Prices Only' mod='stockpricesync'}</option>
+                            </select>
+                        </div>
+                        <button type="submit" name="sync_single_product" class="btn btn-success btn-block">
+                            <i class="icon-refresh"></i> {l s='Sync This Product' mod='stockpricesync'}
+                        </button>
+                        <p class="help-block">{l s='Syncs product + all combinations to all shops instantly.' mod='stockpricesync'}</p>
+                    </form>
+                </div>
+            </div>
+        </div>
     </div>
-    
+
     {* Connected stores table *}
     <div class="panel">
         <div class="panel-heading">

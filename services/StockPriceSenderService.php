@@ -509,6 +509,142 @@ class StockPriceSenderService
     }
 
     /**
+     * Sync single product by reference to all shops
+     */
+    public function syncSingleProduct($product_reference, $sync_type = 'both')
+    {
+        // Find product by reference
+        $id_product = (int)Db::getInstance()->getValue('
+            SELECT id_product FROM `'._DB_PREFIX_.'product`
+            WHERE reference = "'.pSQL($product_reference).'"
+        ');
+
+        if (!$id_product) {
+            return [
+                'success' => false,
+                'message' => 'Product not found with reference: ' . $product_reference
+            ];
+        }
+
+        $product = new Product($id_product);
+        if (!Validate::isLoadedObject($product)) {
+            return [
+                'success' => false,
+                'message' => 'Error loading product'
+            ];
+        }
+
+        // Get product data
+        $id_shop = (int)Context::getContext()->shop->id;
+        $base_price = (float)$product->price;
+        $quantity = (int)StockAvailable::getQuantityAvailableByProduct($id_product, 0, $id_shop);
+
+        $products_to_sync = [];
+
+        // Add base product
+        $products_to_sync[] = [
+            'reference' => $product_reference,
+            'combination_reference' => null,
+            'price' => $base_price,
+            'price_impact' => 0,
+            'quantity' => $quantity
+        ];
+
+        // Get combinations
+        $combinations = $product->getAttributeCombinations();
+        if ($combinations) {
+            $combo_data = [];
+            foreach ($combinations as $combo) {
+                $id_product_attribute = (int)$combo['id_product_attribute'];
+                if (!isset($combo_data[$id_product_attribute]) && !empty($combo['reference'])) {
+                    $combo_quantity = (int)StockAvailable::getQuantityAvailableByProduct($id_product, $id_product_attribute, $id_shop);
+                    $combo_price_impact = (float)$combo['price'];
+
+                    $combo_data[$id_product_attribute] = true;
+                    $products_to_sync[] = [
+                        'reference' => $product_reference,
+                        'combination_reference' => $combo['reference'],
+                        'price' => $base_price,
+                        'price_impact' => $combo_price_impact,
+                        'quantity' => $combo_quantity
+                    ];
+                }
+            }
+        }
+
+        // Sync to all active shops
+        $shops = SPSRemoteShop::getActiveShops();
+        if (empty($shops)) {
+            return [
+                'success' => false,
+                'message' => 'No active shops configured'
+            ];
+        }
+
+        $total_synced = 0;
+        $errors = 0;
+
+        foreach ($shops as $shop) {
+            foreach ($products_to_sync as $product_data) {
+                // Sync stock
+                if (($sync_type == 'stock' || $sync_type == 'both') && $shop['sync_stock']) {
+                    $result = $this->sendStockToShop(
+                        $shop,
+                        $product_data['reference'],
+                        $product_data['combination_reference'],
+                        $product_data['quantity']
+                    );
+                    if ($result['success']) {
+                        $total_synced++;
+                    } else {
+                        $errors++;
+                    }
+                }
+
+                // Sync price
+                if (($sync_type == 'price' || $sync_type == 'both') && $shop['sync_price']) {
+                    $base = (float)$product_data['price'];
+                    $impact = (float)$product_data['price_impact'];
+
+                    // Apply percentage to base (if configured)
+                    if (!empty($shop['price_percentage']) && $shop['price_percentage'] != 0) {
+                        $base = $base * (1 + ($shop['price_percentage'] / 100));
+                    }
+
+                    $final_price = $base + $impact;
+
+                    $result = $this->sendPriceToShop(
+                        $shop,
+                        $product_data['reference'],
+                        $product_data['combination_reference'],
+                        $final_price
+                    );
+                    if ($result['success']) {
+                        $total_synced++;
+                    } else {
+                        $errors++;
+                    }
+                }
+            }
+        }
+
+        $total_items = count($products_to_sync);
+        return [
+            'success' => true,
+            'message' => sprintf(
+                'Product %s synced: %d items (%d base + %d combinations) to %d shops. Success: %d, Errors: %d',
+                $product_reference,
+                $total_items,
+                1,
+                $total_items - 1,
+                count($shops),
+                $total_synced,
+                $errors
+            )
+        ];
+    }
+
+    /**
      * Sync all products for a specific shop
      */
     public function syncShop($shop, $sync_type = 'both')

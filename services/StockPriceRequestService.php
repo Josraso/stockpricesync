@@ -118,7 +118,85 @@ class StockPriceRequestService
             ];
         }
     }
-    
+
+    /**
+     * Request update for a single product by reference
+     */
+    public function requestSingleProduct($product_reference, $sync_type = 'both')
+    {
+        try {
+            // Check configuration
+            if (empty($this->main_shop_url) || empty($this->api_key)) {
+                throw new Exception('The connection configuration with the main shop is not valid.');
+            }
+
+            // URL of the request endpoint
+            $url = $this->main_shop_url . '/modules/stockpricesync/api/request.php';
+
+            // Get the URL of this shop for the main shop
+            $shop_url = Context::getContext()->shop->getBaseURL(true);
+
+            // Check if product exists locally
+            $id_product = $this->findProductByReference($product_reference);
+            if (!$id_product) {
+                throw new Exception('Product not found with reference: ' . $product_reference);
+            }
+
+            // Get product and its combinations
+            $product = new Product($id_product);
+            $products_filter = [
+                ['reference' => $product_reference]
+            ];
+
+            // Add combinations
+            $combinations = $product->getAttributeCombinations();
+            if ($combinations) {
+                foreach ($combinations as $combo) {
+                    if (!empty($combo['reference'])) {
+                        $products_filter[] = [
+                            'reference' => $product_reference,
+                            'combination_reference' => $combo['reference']
+                        ];
+                    }
+                }
+            }
+
+            // Prepare data for the request
+            $data = [
+                'shop_name' => $this->shop_name,
+                'shop_url' => $shop_url,
+                'sync_type' => $sync_type,
+                'products' => $products_filter
+            ];
+
+            // Send request
+            $result = $this->sendRequest($data, $url);
+
+            if (!$result['success']) {
+                throw new Exception($result['message']);
+            }
+
+            // Process updates
+            $updates = isset($result['updates']) ? $result['updates'] : [];
+            $processed = $this->processUpdateBatch($updates, $sync_type);
+
+            return [
+                'success' => true,
+                'message' => sprintf(
+                    'Product %s updated: %d items (%d combinations)',
+                    $product_reference,
+                    $processed,
+                    count($combinations) ?: 0
+                )
+            ];
+        } catch (Exception $e) {
+            return [
+                'success' => false,
+                'message' => $e->getMessage()
+            ];
+        }
+    }
+
     /**
      * Process a batch of updates
      */

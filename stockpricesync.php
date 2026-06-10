@@ -334,6 +334,25 @@ $sql[] = 'CREATE TABLE IF NOT EXISTS `'._DB_PREFIX_.'stockpricesync_log` (
                         $errors[] = $this->l('Error requesting stock and prices: ') . $result['message'];
                     }
                 }
+
+                // Child shop - request single product update
+                if (Tools::isSubmit('request_single_product')) {
+                    $product_reference = trim(Tools::getValue('product_reference'));
+
+                    if (empty($product_reference)) {
+                        $errors[] = $this->l('Please enter a product reference.');
+                    } else {
+                        require_once(dirname(__FILE__).'/services/StockPriceRequestService.php');
+                        $requestService = new StockPriceRequestService();
+                        $result = $requestService->requestSingleProduct($product_reference);
+
+                        if ($result['success']) {
+                            $confirmations[] = $result['message'];
+                        } else {
+                            $errors[] = $this->l('Error: ') . $result['message'];
+                        }
+                    }
+                }
             } else {
                 // Main shop - add or update remote shop
                 if (Tools::isSubmit('submit_add_shop') || Tools::isSubmit('submit_edit_shop')) {
@@ -444,15 +463,35 @@ $sql[] = 'CREATE TABLE IF NOT EXISTS `'._DB_PREFIX_.'stockpricesync_log` (
                 // Manual sync for all shops
                 if (Tools::isSubmit('sync_all_shops')) {
                     $sync_type = Tools::getValue('sync_type', 'both');
-                    
+
                     require_once(dirname(__FILE__).'/services/StockPriceSenderService.php');
                     $sender = new StockPriceSenderService();
                     $result = $sender->syncAllShops($sync_type);
-                    
+
                     if ($result['success']) {
                         $confirmations[] = $this->l('Synchronization with all shops completed.') . ' ' . $result['message'];
                     } else {
                         $errors[] = $this->l('Error syncing with shops: ') . $result['message'];
+                    }
+                }
+
+                // Sync single product by reference
+                if (Tools::isSubmit('sync_single_product')) {
+                    $product_reference = trim(Tools::getValue('product_reference'));
+                    $sync_type = Tools::getValue('sync_type_single', 'both');
+
+                    if (empty($product_reference)) {
+                        $errors[] = $this->l('Please enter a product reference.');
+                    } else {
+                        require_once(dirname(__FILE__).'/services/StockPriceSenderService.php');
+                        $sender = new StockPriceSenderService();
+                        $result = $sender->syncSingleProduct($product_reference, $sync_type);
+
+                        if ($result['success']) {
+                            $confirmations[] = $result['message'];
+                        } else {
+                            $errors[] = $this->l('Error: ') . $result['message'];
+                        }
                     }
                 }
             }

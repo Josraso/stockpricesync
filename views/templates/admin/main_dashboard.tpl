@@ -363,21 +363,41 @@
             autoProcessStop = false;
             var processedItems = 0;
             var batchSize = 50;
+            var maxParallelRequests = 3; // Process 3 batches simultaneously
+            var activeRequests = 0;
+            var processingComplete = false;
 
             $("#normal_buttons").hide();
             $("#auto_process_container").show();
             $("#auto_process_status").text('{l s="Starting automatic processing..." mod='stockpricesync' js=1}');
 
             function processBatch() {
-                if (autoProcessStop) {
-                    $("#auto_process_status").html('<strong class="text-warning">{l s="Processing stopped by user" mod='stockpricesync' js=1}</strong>');
-                    setTimeout(function() {
-                        $("#auto_process_container").hide();
-                        $("#normal_buttons").show();
-                        location.reload();
-                    }, 2000);
+                // Stop if user clicked stop or already complete
+                if (autoProcessStop || processingComplete) {
                     return;
                 }
+
+                // Check if we have items left to process
+                var remaining = totalItems - processedItems;
+                if (remaining <= 0) {
+                    // Only mark complete once all active requests finish
+                    if (activeRequests === 0 && !processingComplete) {
+                        processingComplete = true;
+                        $("#auto_process_status").html('<strong class="text-success">{l s="All items processed successfully!" mod='stockpricesync' js=1}</strong>');
+                        $("#stop_auto_process").hide();
+                        setTimeout(function() {
+                            location.reload();
+                        }, 2000);
+                    }
+                    return;
+                }
+
+                // Don't exceed max parallel requests
+                if (activeRequests >= maxParallelRequests) {
+                    return;
+                }
+
+                activeRequests++;
 
                 $.ajax({
                     url: '{$current_link|escape:'javascript':'UTF-8'}',
@@ -401,41 +421,50 @@
                                 $("#auto_process_status").html(
                                     '<strong>{l s="Processed:" mod='stockpricesync' js=1}</strong> ' + processedItems + ' / ' + totalItems +
                                     '<br><strong>{l s="Remaining:" mod='stockpricesync' js=1}</strong> ' + Math.max(0, remaining) +
-                                    '<br><strong>{l s="Errors:" mod='stockpricesync' js=1}</strong> ' + (data.errors || 0)
+                                    '<br><strong>{l s="Errors:" mod='stockpricesync' js=1}</strong> ' + (data.errors || 0) +
+                                    '<br><small class="text-muted">{l s="Processing 3 batches in parallel" mod='stockpricesync' js=1}</small>'
                                 );
                                 $("#pending_count").text(Math.max(0, remaining));
-
-                                if (remaining > 0 && !autoProcessStop) {
-                                    setTimeout(processBatch, 500);
-                                } else {
-                                    $("#auto_process_status").html('<strong class="text-success">{l s="All items processed successfully!" mod='stockpricesync' js=1}</strong>');
-                                    $("#stop_auto_process").hide();
-                                    setTimeout(function() {
-                                        location.reload();
-                                    }, 2000);
-                                }
                             } else {
                                 throw new Error('Invalid response');
                             }
                         } catch (e) {
-                            $("#auto_process_status").html('<strong class="text-danger">{l s="Error processing queue. Please try again." mod='stockpricesync' js=1}</strong>');
-                            setTimeout(function() {
-                                $("#auto_process_container").hide();
-                                $("#normal_buttons").show();
-                            }, 3000);
+                            console.error('Error processing response:', e);
                         }
                     },
-                    error: function() {
-                        $("#auto_process_status").html('<strong class="text-danger">{l s="Connection error. Please check your internet connection." mod='stockpricesync' js=1}</strong>');
+                    error: function(xhr, status, error) {
+                        console.error('AJAX error:', status, error);
+                    },
+                    complete: function() {
+                        activeRequests--;
+
+                        // If stopped by user, show message
+                        if (autoProcessStop) {
+                            $("#auto_process_status").html('<strong class="text-warning">{l s="Processing stopped by user" mod='stockpricesync' js=1}</strong>');
+                            if (activeRequests === 0) {
+                                setTimeout(function() {
+                                    $("#auto_process_container").hide();
+                                    $("#normal_buttons").show();
+                                    location.reload();
+                                }, 2000);
+                            }
+                            return;
+                        }
+
+                        // Launch next batch immediately to maintain parallelism
                         setTimeout(function() {
-                            $("#auto_process_container").hide();
-                            $("#normal_buttons").show();
-                        }, 3000);
+                            processBatch();
+                        }, 100);
                     }
                 });
             }
 
-            processBatch();
+            // Start with maxParallelRequests batches running simultaneously
+            for (var i = 0; i < maxParallelRequests; i++) {
+                setTimeout(function() {
+                    processBatch();
+                }, i * 100); // Stagger by 100ms to avoid race conditions
+            }
         }
     });
 </script>

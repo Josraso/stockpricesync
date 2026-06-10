@@ -317,14 +317,15 @@ function getAllProductUpdates($shop, $sync_type, $product_filter = [])
             // Add price data if needed
             if ($sync_type == 'price' || $sync_type == 'both') {
                 if ($shop->sync_price) {
-                    $price = $product_obj->getPrice();
+                    $base_price = $product_obj->getPrice();
 
                     // Apply percentage to base product (if configured)
                     if (!empty($price_percentage) && $price_percentage != 0) {
-                        $price = $price * (1 + ($price_percentage / 100));
+                        $base_price = $base_price * (1 + ($price_percentage / 100));
                     }
 
-                    $update['price'] = (float)$price;
+                    $update['price'] = (float)$base_price;
+                    $update['price_impact'] = 0;  // Base product has no impact
                 }
             }
             
@@ -365,8 +366,6 @@ function getAllProductUpdates($shop, $sync_type, $product_filter = [])
                 // Add price data if needed
                 if ($sync_type == 'price' || $sync_type == 'both') {
                     if ($shop->sync_price) {
-                        $id_product_attribute = (int)$combination['id_product_attribute'];
-
                         // Get base product price (without tax, without combination impact)
                         $base_price = $product_obj->getPrice(false, null);
 
@@ -378,10 +377,9 @@ function getAllProductUpdates($shop, $sync_type, $product_filter = [])
                         // Get combination price impact (from pa.price column) - never changes
                         $price_impact = (float)$combination['price'];
 
-                        // Final price = base + impact
-                        $price = $base_price + $price_impact;
-
-                        $update['price'] = (float)$price;
+                        // Send base and impact separately
+                        $update['price'] = (float)$base_price;
+                        $update['price_impact'] = (float)$price_impact;
                     }
                 }
                 

@@ -338,13 +338,14 @@ $sql[] = 'CREATE TABLE IF NOT EXISTS `'._DB_PREFIX_.'stockpricesync_log` (
                 // Child shop - request single product update
                 if (Tools::isSubmit('request_single_product')) {
                     $product_reference = trim(Tools::getValue('product_reference'));
+                    $sync_type = Tools::getValue('sync_type_single', 'both');
 
                     if (empty($product_reference)) {
                         $errors[] = $this->l('Please enter a product reference.');
                     } else {
                         require_once(dirname(__FILE__).'/services/StockPriceRequestService.php');
                         $requestService = new StockPriceRequestService();
-                        $result = $requestService->requestSingleProduct($product_reference);
+                        $result = $requestService->requestSingleProduct($product_reference, $sync_type);
 
                         if ($result['success']) {
                             $confirmations[] = $result['message'];

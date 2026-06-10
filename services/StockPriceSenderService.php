@@ -72,59 +72,60 @@ class StockPriceSenderService
     {
         // Get shops that need price sync
         $shops = SPSRemoteShop::getActiveShopsWithPriceSync();
-        
+
         if (empty($shops)) {
             return false; // No shops to sync
         }
-        
+
         // Get product reference
         $product_reference = $product->reference;
-        
+
         // Get combination reference if needed
         $combination_reference = null;
+        $price_impact = 0;
+
         if ($id_product_attribute > 0) {
             $combination = new Combination($id_product_attribute);
             if (Validate::isLoadedObject($combination) && !empty($combination->reference)) {
                 $combination_reference = $combination->reference;
+                // Get combination price impact
+                $price_impact = (float)$combination->price;
             }
         }
-        
-        // Get product price
-        $price = $product->price; // El campo 'price' ya contiene el precio sin IVA
-        
+
+        // Get product base price
+        $base_price = (float)$product->price;
+
+        // Calculate final price (base + impact for combinations)
+        $price = $base_price + $price_impact;
+
         // Check if we're in batch mode or real-time
         $batch_size = (int)Configuration::get('STOCKPRICESYNC_BATCH_SIZE');
         $use_batch = count($shops) > $batch_size;
-        
+
         if ($use_batch) {
             // Add to queue for batch processing
             $result = $this->addToQueue($product_reference, $combination_reference, 'price', null, $price);
-            
+
             // Si se han añadido elementos a la cola, procesar uno o más elementos inmediatamente
             if ($result) {
                 // Procesar algunos elementos de la cola después de añadir uno nuevo
                 $this->processQueue(5); // Procesar 5 elementos para no sobrecargar
             }
-            
+
             return ['success' => true, 'queued' => true];
         } else {
-            // Send directly to each shop
+            // Send directly to each shop (NO apply price_percentage here, done in CHILD)
             $results = [];
-            
+
             foreach ($shops as $shop) {
-                // Apply percentage if configured
-                $adjusted_price = $price;
-                if (isset($shop['price_percentage']) && $shop['price_percentage'] != 0) {
-                    $adjusted_price = $price * (1 + ($shop['price_percentage'] / 100));
-                }
-                
                 $result = $this->sendPriceToShop(
                     $shop,
                     $product_reference,
                     $combination_reference,
-                    $adjusted_price
+                    $price  // Send price with impact, NO percentage adjustment
                 );
-                
+
                 $results[$shop['id_shop_remote']] = $result;
             }
             

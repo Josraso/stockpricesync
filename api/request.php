@@ -366,13 +366,21 @@ function getAllProductUpdates($shop, $sync_type, $product_filter = [])
                 if ($sync_type == 'price' || $sync_type == 'both') {
                     if ($shop->sync_price) {
                         $id_product_attribute = (int)$combination['id_product_attribute'];
-                        $price = $product_obj->getPrice(true, $id_product_attribute);
-                        
-                        // Apply price percentage adjustment if configured
+
+                        // Get base product price (without tax, without combination impact)
+                        $base_price = $product_obj->getPrice(false, null);
+
+                        // Apply price percentage adjustment ONLY to base price
                         if ($price_percentage != 0) {
-                            $price = $price * (1 + ($price_percentage / 100));
+                            $base_price = $base_price * (1 + ($price_percentage / 100));
                         }
-                        
+
+                        // Get combination price impact (from pa.price column)
+                        $price_impact = (float)$combination['price'];
+
+                        // Final price = adjusted base + original impact (unchanged)
+                        $price = $base_price + $price_impact;
+
                         $update['price'] = (float)$price;
                     }
                 }

@@ -114,19 +114,18 @@ class StockPriceSenderService
             return ['success' => true, 'queued' => true];
         } else {
             // Send directly to each shop
-            // Apply percentage correctly: (base * (1 + %)) + impact
             $results = [];
 
             foreach ($shops as $shop) {
-                $adjusted_base = $base_price;
+                $final_base = $base_price;
 
-                // Apply percentage only to base price
-                if (isset($shop['price_percentage']) && $shop['price_percentage'] != 0) {
-                    $adjusted_base = $base_price * (1 + ($shop['price_percentage'] / 100));
+                // Apply percentage to base price (if configured)
+                if (!empty($shop['price_percentage']) && $shop['price_percentage'] != 0) {
+                    $final_base = $base_price * (1 + ($shop['price_percentage'] / 100));
                 }
 
-                // Final price = adjusted base + impact
-                $final_price = $adjusted_base + $price_impact;
+                // Final price = base + impact (impact never changes)
+                $final_price = $final_base + $price_impact;
 
                 $result = $this->sendPriceToShop(
                     $shop,
@@ -407,14 +406,13 @@ class StockPriceSenderService
                             $base_price = (float)$item['price'];
                             $price_impact = isset($item['price_impact']) ? (float)$item['price_impact'] : 0;
 
-                            // Apply percentage ONLY to base price
-                            $adjusted_base = $base_price;
-                            if (isset($shop['price_percentage']) && $shop['price_percentage'] != 0) {
-                                $adjusted_base = $base_price * (1 + ($shop['price_percentage'] / 100));
+                            // Apply percentage ONLY to base price (if configured)
+                            if (!empty($shop['price_percentage']) && $shop['price_percentage'] != 0) {
+                                $base_price = $base_price * (1 + ($shop['price_percentage'] / 100));
                             }
 
-                            // Final price = adjusted base + original impact (unchanged)
-                            $final_price = $adjusted_base + $price_impact;
+                            // Final price = base + impact (impact never changes)
+                            $final_price = $base_price + $price_impact;
 
                             $result = $this->sendPriceToShop(
                                 $shop,
@@ -618,22 +616,20 @@ class StockPriceSenderService
                     $base_price = (float)$product['price'];
                     $price_impact = isset($product['price_impact']) ? (float)$product['price_impact'] : 0;
 
-                    // Apply percentage ONLY to base price
-                    $adjusted_base = $base_price;
-                    if ($shop->price_percentage != 0) {
-                        $adjusted_base = $base_price * (1 + ($shop->price_percentage / 100));
+                    // Apply percentage to base price (if configured)
+                    if (!empty($shop->price_percentage) && $shop->price_percentage != 0) {
+                        $base_price = $base_price * (1 + ($shop->price_percentage / 100));
                     }
 
-                    // Final price = adjusted base + original impact (unchanged)
-                    $final_price = $adjusted_base + $price_impact;
+                    // Final price = base + impact (impact never changes)
+                    $final_price = $base_price + $price_impact;
 
                     $result = $this->sendPriceToShop(
                         [
                             'id_shop_remote' => $shop->id_shop_remote,
                             'name' => $shop->name,
                             'url' => $shop->url,
-                            'api_key' => $shop->api_key,
-                            'price_percentage' => $shop->price_percentage
+                            'api_key' => $shop->api_key
                         ],
                         $product['reference'],
                         $product['combination_reference'],

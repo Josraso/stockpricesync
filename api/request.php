@@ -318,12 +318,12 @@ function getAllProductUpdates($shop, $sync_type, $product_filter = [])
             if ($sync_type == 'price' || $sync_type == 'both') {
                 if ($shop->sync_price) {
                     $price = $product_obj->getPrice();
-                    
-                    // Apply price percentage adjustment if configured
-                    if ($price_percentage != 0) {
+
+                    // Apply percentage to base product (if configured)
+                    if (!empty($price_percentage) && $price_percentage != 0) {
                         $price = $price * (1 + ($price_percentage / 100));
                     }
-                    
+
                     $update['price'] = (float)$price;
                 }
             }
@@ -370,15 +370,15 @@ function getAllProductUpdates($shop, $sync_type, $product_filter = [])
                         // Get base product price (without tax, without combination impact)
                         $base_price = $product_obj->getPrice(false, null);
 
-                        // Apply price percentage adjustment ONLY to base price
-                        if ($price_percentage != 0) {
+                        // Apply percentage to base price (if configured)
+                        if (!empty($price_percentage) && $price_percentage != 0) {
                             $base_price = $base_price * (1 + ($price_percentage / 100));
                         }
 
-                        // Get combination price impact (from pa.price column)
+                        // Get combination price impact (from pa.price column) - never changes
                         $price_impact = (float)$combination['price'];
 
-                        // Final price = adjusted base + original impact (unchanged)
+                        // Final price = base + impact
                         $price = $base_price + $price_impact;
 
                         $update['price'] = (float)$price;

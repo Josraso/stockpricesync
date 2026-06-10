@@ -158,21 +158,21 @@
         </form>
     </div>
 
-    {* Request single product update *}
+    {* Sync single product *}
     <div class="panel">
         <div class="panel-heading">
-            <i class="icon-search"></i> {l s='Request Single Product Update' mod='stockpricesync'}
+            <i class="icon-search"></i> {l s='Sync Single Product' mod='stockpricesync'}
         </div>
         <form class="form-horizontal" action="{$current_link}" method="post">
             <div class="form-group">
                 <label class="control-label col-lg-3">{l s='Product Reference:' mod='stockpricesync'}</label>
                 <div class="col-lg-5">
                     <input type="text" name="product_reference" class="form-control" placeholder="{l s='Enter product reference...' mod='stockpricesync'}" required>
-                    <p class="help-block">{l s='Request update for this product + all combinations from main store' mod='stockpricesync'}</p>
+                    <p class="help-block">{l s='Syncs this product + combinations from main store instantly' mod='stockpricesync'}</p>
                 </div>
                 <div class="col-lg-4">
                     <button type="submit" name="request_single_product" class="btn btn-success">
-                        <i class="icon-download"></i> {l s='Request This Product' mod='stockpricesync'}
+                        <i class="icon-refresh"></i> {l s='Sync This Product' mod='stockpricesync'}
                     </button>
                 </div>
             </div>

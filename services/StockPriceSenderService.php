@@ -551,7 +551,8 @@ class StockPriceSenderService
         ];
 
         // Get combinations
-        $combinations = $product->getAttributeCombinations();
+        $id_lang = (int)Context::getContext()->language->id;
+        $combinations = $product->getAttributeCombinations($id_lang);
         if ($combinations) {
             $combo_data = [];
             foreach ($combinations as $combo) {

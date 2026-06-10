@@ -149,7 +149,8 @@ class StockPriceRequestService
             ];
 
             // Add combinations
-            $combinations = $product->getAttributeCombinations();
+            $id_lang = (int)Context::getContext()->language->id;
+            $combinations = $product->getAttributeCombinations($id_lang);
             if ($combinations) {
                 foreach ($combinations as $combo) {
                     if (!empty($combo['reference'])) {

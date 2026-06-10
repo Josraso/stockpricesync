@@ -549,26 +549,25 @@ class StockPriceSenderService
             'quantity' => $quantity
         ];
 
-        // Get combinations
+        // Get combinations DIRECTLY from database
         $id_lang = (int)Context::getContext()->language->id;
-        $combinations = $product->getAttributeCombinations($id_lang);
-        if ($combinations) {
-            $combo_data = [];
-            foreach ($combinations as $combo) {
-                $id_product_attribute = (int)$combo['id_product_attribute'];
-                if (!isset($combo_data[$id_product_attribute]) && !empty($combo['reference'])) {
-                    $combo_quantity = (int)StockAvailable::getQuantityAvailableByProduct($id_product, $id_product_attribute, $id_shop);
-                    $combo_price_impact = (float)$combo['price'];
+        $combinations = Db::getInstance()->executeS('
+            SELECT pa.id_product_attribute, pa.reference, pa.price as price_impact, s.quantity
+            FROM '._DB_PREFIX_.'product_attribute pa
+            LEFT JOIN '._DB_PREFIX_.'stock_available s
+                ON (pa.id_product = s.id_product AND pa.id_product_attribute = s.id_product_attribute AND s.id_shop = '.(int)$id_shop.')
+            WHERE pa.id_product = '.(int)$id_product.' AND pa.reference != ""
+        ');
 
-                    $combo_data[$id_product_attribute] = true;
-                    $products_to_sync[] = [
-                        'reference' => $product_reference,
-                        'combination_reference' => $combo['reference'],
-                        'price' => $base_price,
-                        'price_impact' => $combo_price_impact,
-                        'quantity' => $combo_quantity
-                    ];
-                }
+        if ($combinations) {
+            foreach ($combinations as $combo) {
+                $products_to_sync[] = [
+                    'reference' => $product_reference,
+                    'combination_reference' => $combo['reference'],
+                    'price' => $base_price,
+                    'price_impact' => (float)$combo['price_impact'],
+                    'quantity' => (int)$combo['quantity']
+                ];
             }
         }
 

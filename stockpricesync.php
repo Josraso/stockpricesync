@@ -59,6 +59,7 @@ class StockPriceSync extends Module
             !$this->registerHook('actionProductUpdate') ||
             !$this->registerHook('actionObjectStockAvailableUpdateAfter') ||
             !$this->registerHook('actionObjectProductUpdateAfter') ||
+            !$this->registerHook('actionObjectCombinationUpdateAfter') ||
             !$this->registerHook('actionObjectSpecificPriceUpdateAfter') ||
             !$this->registerHook('actionProductPriceUpdateAfter') ||
             !$this->registerHook('displayBackOfficeHeader') ||
@@ -1422,6 +1423,54 @@ if (Tools::isSubmit('process_queue')) {
             require_once(dirname(__FILE__).'/services/StockPriceSenderService.php');
             $sender = new StockPriceSenderService();
             $sender->processPriceUpdate($product);
+        }
+    }
+
+    /**
+     * Hook for combination (product attribute) updates
+     */
+    public function hookActionObjectCombinationUpdateAfter($params)
+    {
+        // Only for main shop
+        if (Configuration::get('STOCKPRICESYNC_SHOP_TYPE') != 'MAIN' ||
+            !Configuration::get('STOCKPRICESYNC_REAL_TIME_SYNC')) {
+            return;
+        }
+
+        // Get the combination object
+        if (!isset($params['object']) || !($params['object'] instanceof Combination)) {
+            return;
+        }
+
+        $combination = $params['object'];
+        $id_product = (int)$combination->id_product;
+        $id_product_attribute = (int)$combination->id;
+
+        // Get product
+        $product = new Product($id_product);
+        if (!Validate::isLoadedObject($product) || empty($product->reference)) {
+            return; // Skip products without reference
+        }
+
+        // Get combination reference
+        if (empty($combination->reference)) {
+            return; // Skip combinations without reference
+        }
+
+        // Process stock update if enabled
+        if (Configuration::get('STOCKPRICESYNC_SYNC_STOCK')) {
+            $quantity = StockAvailable::getQuantityAvailableByProduct($id_product, $id_product_attribute);
+
+            require_once(dirname(__FILE__).'/services/StockPriceSenderService.php');
+            $sender = new StockPriceSenderService();
+            $sender->processStockUpdate($product->reference, $combination->reference, $quantity);
+        }
+
+        // Process price update if enabled
+        if (Configuration::get('STOCKPRICESYNC_SYNC_PRICE')) {
+            require_once(dirname(__FILE__).'/services/StockPriceSenderService.php');
+            $sender = new StockPriceSenderService();
+            $sender->processPriceUpdate($product, $id_product_attribute);
         }
     }
 }

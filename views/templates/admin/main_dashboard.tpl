@@ -363,6 +363,7 @@
             autoProcessing = true;
             autoProcessStop = false;
             var processedItems = 0;
+            var lastKnownRemaining = totalItems; // Track real remaining count from backend
             var batchSize = 50;
             var maxParallelRequests = 3; // Process 3 batches simultaneously
             var activeRequests = 0;
@@ -378,9 +379,8 @@
                     return;
                 }
 
-                // Check if we have items left to process
-                var remaining = totalItems - processedItems;
-                if (remaining <= 0) {
+                // Check if we have items left to process (use REAL count from backend)
+                if (lastKnownRemaining <= 0) {
                     // Only mark complete once all active requests finish
                     if (activeRequests === 0 && !processingComplete) {
                         processingComplete = true;
@@ -417,6 +417,10 @@
 
                                 // Use REAL remaining count from database if provided
                                 var remaining = data.remaining !== undefined ? data.remaining : (totalItems - processedItems);
+
+                                // Update last known remaining for stop condition
+                                lastKnownRemaining = remaining;
+
                                 var percentage = Math.min(100, Math.round(((totalItems - remaining) / totalItems) * 100));
 
                                 $("#auto_process_bar").css('width', percentage + '%');

@@ -399,10 +399,31 @@ class StockPriceSenderService
                 
                 if ($item['sync_type'] == 'price' || $item['sync_type'] == 'both') {
                     // Get shops that need price sync
-                    $shops = SPSRemoteShop::getActiveShopsWithPriceSync();
+                    try {
+                        $shops = SPSRemoteShop::getActiveShopsWithPriceSync();
+                    } catch (Exception $e) {
+                        $success = false;
+                        $error_message .= 'Error getting shops with price sync: '.$e->getMessage().'; ';
+                        PrestaShopLogger::addLog(
+                            'StockPriceSync: Error in getActiveShopsWithPriceSync - '.$e->getMessage(),
+                            3,
+                            null,
+                            'StockPriceSenderService',
+                            0,
+                            true
+                        );
+                        $shops = [];
+                    }
 
                     foreach ($shops as $shop) {
                         try {
+                            // Validate shop data
+                            if (empty($shop['url']) || empty($shop['api_key'])) {
+                                $success = false;
+                                $error_message .= 'Shop '.(isset($shop['name']) ? $shop['name'] : 'unknown').' has empty URL or API key; ';
+                                continue;
+                            }
+
                             $base_price = (float)$item['price'];
                             $price_impact = isset($item['price_impact']) ? (float)$item['price_impact'] : 0;
 
@@ -427,6 +448,14 @@ class StockPriceSenderService
                         } catch (Exception $e) {
                             $success = false;
                             $error_message .= 'Exception in shop '.$shop['name'].': '.$e->getMessage().'; ';
+                            PrestaShopLogger::addLog(
+                                'StockPriceSync: Exception processing price for shop '.$shop['name'].' - '.$e->getMessage(),
+                                3,
+                                null,
+                                'StockPriceSenderService',
+                                0,
+                                true
+                            );
                         }
                     }
                 }
@@ -796,9 +825,34 @@ class StockPriceSenderService
         set_time_limit(300); // 5 minutes
         ignore_user_abort(true);
 
+        // Log the sync attempt
+        PrestaShopLogger::addLog(
+            'StockPriceSync: syncAllShops called with sync_type='.$sync_type,
+            1,
+            null,
+            'StockPriceSenderService',
+            0,
+            true
+        );
+
         // Get all active shops
-        $shops = SPSRemoteShop::getActiveShops();
-        
+        try {
+            $shops = SPSRemoteShop::getActiveShops();
+        } catch (Exception $e) {
+            PrestaShopLogger::addLog(
+                'StockPriceSync: Error getting active shops - '.$e->getMessage(),
+                3,
+                null,
+                'StockPriceSenderService',
+                0,
+                true
+            );
+            return [
+                'success' => false,
+                'message' => 'Error getting active shops: '.$e->getMessage()
+            ];
+        }
+
         if (empty($shops)) {
             return [
                 'success' => false,
@@ -934,36 +988,56 @@ class StockPriceSenderService
      */
     private function getProductsWithReferences()
     {
-        $id_shop = (int)Context::getContext()->shop->id;
+        try {
+            $id_shop = (int)Context::getContext()->shop->id;
 
-        // Get ALL products and combinations in a single optimized query with JOINs
-        $sql = "
-            SELECT
-                p.id_product,
-                p.reference AS product_reference,
-                ps.price AS base_price,
-                sa_product.quantity AS product_quantity,
-                pa.id_product_attribute,
-                pa.reference AS combination_reference,
-                pa.price AS price_impact,
-                sa_combo.quantity AS combination_quantity
-            FROM "._DB_PREFIX_."product p
-            LEFT JOIN "._DB_PREFIX_."product_shop ps
-                ON (p.id_product = ps.id_product AND ps.id_shop = {$id_shop})
-            LEFT JOIN "._DB_PREFIX_."stock_available sa_product
-                ON (p.id_product = sa_product.id_product AND sa_product.id_product_attribute = 0 AND sa_product.id_shop = {$id_shop})
-            LEFT JOIN "._DB_PREFIX_."product_attribute pa
-                ON (p.id_product = pa.id_product AND pa.reference != '')
-            LEFT JOIN "._DB_PREFIX_."stock_available sa_combo
-                ON (pa.id_product = sa_combo.id_product AND pa.id_product_attribute = sa_combo.id_product_attribute AND sa_combo.id_shop = {$id_shop})
-            WHERE p.reference != ''
-            ORDER BY p.id_product, pa.id_product_attribute
-        ";
+            // Get ALL products and combinations in a single optimized query with JOINs
+            $sql = "
+                SELECT
+                    p.id_product,
+                    p.reference AS product_reference,
+                    ps.price AS base_price,
+                    sa_product.quantity AS product_quantity,
+                    pa.id_product_attribute,
+                    pa.reference AS combination_reference,
+                    pa.price AS price_impact,
+                    sa_combo.quantity AS combination_quantity
+                FROM "._DB_PREFIX_."product p
+                LEFT JOIN "._DB_PREFIX_."product_shop ps
+                    ON (p.id_product = ps.id_product AND ps.id_shop = {$id_shop})
+                LEFT JOIN "._DB_PREFIX_."stock_available sa_product
+                    ON (p.id_product = sa_product.id_product AND sa_product.id_product_attribute = 0 AND sa_product.id_shop = {$id_shop})
+                LEFT JOIN "._DB_PREFIX_."product_attribute pa
+                    ON (p.id_product = pa.id_product AND pa.reference != '')
+                LEFT JOIN "._DB_PREFIX_."stock_available sa_combo
+                    ON (pa.id_product = sa_combo.id_product AND pa.id_product_attribute = sa_combo.id_product_attribute AND sa_combo.id_shop = {$id_shop})
+                WHERE p.reference != ''
+                ORDER BY p.id_product, pa.id_product_attribute
+            ";
 
-        $rows = Db::getInstance()->executeS($sql);
+            $rows = Db::getInstance()->executeS($sql);
 
-        if (!$rows) {
-            return [];
+            if (!$rows) {
+                PrestaShopLogger::addLog(
+                    'StockPriceSync: getProductsWithReferences returned no rows',
+                    2,
+                    null,
+                    'StockPriceSenderService',
+                    0,
+                    true
+                );
+                return [];
+            }
+        } catch (Exception $e) {
+            PrestaShopLogger::addLog(
+                'StockPriceSync: Error in getProductsWithReferences - '.$e->getMessage().' SQL: '.$sql,
+                3,
+                null,
+                'StockPriceSenderService',
+                0,
+                true
+            );
+            throw $e;
         }
 
         $result = [];

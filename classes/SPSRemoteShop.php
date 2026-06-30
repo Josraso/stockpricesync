@@ -59,13 +59,37 @@ class SPSRemoteShop extends ObjectModel
      */
     public static function getActiveShopsWithPriceSync()
     {
-        $query = new DbQuery();
-        $query->select('*');
-        $query->from('stockpricesync_shop');
-        $query->where('active = 1');
-        $query->where('sync_price = 1');
-        
-        return Db::getInstance()->executeS($query) ?: [];
+        try {
+            $query = new DbQuery();
+            $query->select('*');
+            $query->from('stockpricesync_shop');
+            $query->where('active = 1');
+            $query->where('sync_price = 1');
+
+            $result = Db::getInstance()->executeS($query);
+
+            // Log the query for debugging
+            PrestaShopLogger::addLog(
+                'StockPriceSync: getActiveShopsWithPriceSync query: '.$query->build().' - Results: '.count($result),
+                1,
+                null,
+                'SPSRemoteShop',
+                0,
+                true
+            );
+
+            return $result ?: [];
+        } catch (Exception $e) {
+            PrestaShopLogger::addLog(
+                'StockPriceSync: Error in getActiveShopsWithPriceSync - '.$e->getMessage(),
+                3,
+                null,
+                'SPSRemoteShop',
+                0,
+                true
+            );
+            throw $e;
+        }
     }
 
     /**

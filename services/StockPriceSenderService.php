@@ -563,7 +563,15 @@ class StockPriceSenderService
         }
 
         // Get product data
-        $id_shop = (int)Context::getContext()->shop->id;
+        // Get id_shop safely - critical for PrestaShop 1.6 compatibility
+        $id_shop = 1; // Default to shop 1
+        if (Context::getContext() && Context::getContext()->shop && Context::getContext()->shop->id) {
+            $id_shop = (int)Context::getContext()->shop->id;
+        }
+        if (empty($id_shop)) {
+            $id_shop = 1;
+        }
+
         $base_price = (float)$product->price;
         $quantity = (int)StockAvailable::getQuantityAvailableByProduct($id_product, 0, $id_shop);
 
@@ -579,7 +587,12 @@ class StockPriceSenderService
         ];
 
         // Get combinations DIRECTLY from database
-        $id_lang = (int)Context::getContext()->language->id;
+        // Get id_lang safely
+        $id_lang = 1; // Default
+        if (Context::getContext() && Context::getContext()->language && Context::getContext()->language->id) {
+            $id_lang = (int)Context::getContext()->language->id;
+        }
+
         $combinations = Db::getInstance()->executeS('
             SELECT pa.id_product_attribute, pa.reference, pa.price as price_impact, s.quantity
             FROM '._DB_PREFIX_.'product_attribute pa
@@ -989,7 +1002,16 @@ class StockPriceSenderService
     private function getProductsWithReferences()
     {
         try {
-            $id_shop = (int)Context::getContext()->shop->id;
+            // Get id_shop safely - critical for PrestaShop 1.6 compatibility
+            $id_shop = 1; // Default to shop 1
+            if (Context::getContext() && Context::getContext()->shop && Context::getContext()->shop->id) {
+                $id_shop = (int)Context::getContext()->shop->id;
+            }
+
+            // Validate id_shop is not empty
+            if (empty($id_shop)) {
+                $id_shop = 1;
+            }
 
             // Get ALL products and combinations in a single optimized query with JOINs
             $sql = "

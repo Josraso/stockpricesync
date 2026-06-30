@@ -253,30 +253,41 @@ function getProductUpdatesForBatch($batch_number, $shop, $sync_type)
 function getAllProductUpdates($shop, $sync_type, $product_filter = [])
 {
     $updates = [];
-    
+
     // Build reference filter
     $reference_filter = [];
-    
+
     if (!empty($product_filter)) {
         foreach ($product_filter as $product) {
             if (isset($product['reference']) && !empty($product['reference'])) {
                 $key = $product['reference'];
-                
+
                 if (isset($product['combination_reference']) && !empty($product['combination_reference'])) {
                     $key .= '_' . $product['combination_reference'];
                 }
-                
+
                 $reference_filter[$key] = $product;
             }
         }
     }
-    
+
+    // Get id_shop safely - critical for PrestaShop 1.6 compatibility
+    $id_shop = 1; // Default to shop 1
+    if (Context::getContext() && Context::getContext()->shop && Context::getContext()->shop->id) {
+        $id_shop = (int)Context::getContext()->shop->id;
+    }
+
+    // Validate id_shop is not empty
+    if (empty($id_shop)) {
+        $id_shop = 1;
+    }
+
     // Get all products with their references
     $products = Db::getInstance()->executeS("
         SELECT p.id_product, p.reference, ps.price, s.quantity
         FROM " . _DB_PREFIX_ . "product p
-        LEFT JOIN " . _DB_PREFIX_ . "product_shop ps ON (p.id_product = ps.id_product AND ps.id_shop = " . (int)Context::getContext()->shop->id . ")
-        LEFT JOIN " . _DB_PREFIX_ . "stock_available s ON (p.id_product = s.id_product AND s.id_product_attribute = 0 AND s.id_shop = " . (int)Context::getContext()->shop->id . ")
+        LEFT JOIN " . _DB_PREFIX_ . "product_shop ps ON (p.id_product = ps.id_product AND ps.id_shop = " . (int)$id_shop . ")
+        LEFT JOIN " . _DB_PREFIX_ . "stock_available s ON (p.id_product = s.id_product AND s.id_product_attribute = 0 AND s.id_shop = " . (int)$id_shop . ")
         WHERE p.reference != ''
         ORDER BY p.id_product
     ");
@@ -336,8 +347,8 @@ function getAllProductUpdates($shop, $sync_type, $product_filter = [])
         $combinations = Db::getInstance()->executeS("
             SELECT pa.id_product_attribute, pa.reference, pa.price, s.quantity
             FROM " . _DB_PREFIX_ . "product_attribute pa
-            LEFT JOIN " . _DB_PREFIX_ . "stock_available s ON (pa.id_product = s.id_product AND pa.id_product_attribute = s.id_product_attribute AND s.id_shop = " . (int)Context::getContext()->shop->id . ")
-            WHERE pa.id_product = " . $id_product . " AND pa.reference != ''
+            LEFT JOIN " . _DB_PREFIX_ . "stock_available s ON (pa.id_product = s.id_product AND pa.id_product_attribute = s.id_product_attribute AND s.id_shop = " . (int)$id_shop . ")
+            WHERE pa.id_product = " . (int)$id_product . " AND pa.reference != ''
             ORDER BY pa.id_product_attribute
         ");
         

@@ -50,8 +50,8 @@ class SPSRemoteShop extends ObjectModel
         $query->from('stockpricesync_shop');
         $query->where('active = 1');
         $query->where('sync_stock = 1');
-        
-        return Db::getInstance()->executeS($query) ?: [];
+
+        return Db::getInstance()->executeS($query->build()) ?: [];
     }
 
     /**
@@ -66,7 +66,7 @@ class SPSRemoteShop extends ObjectModel
             $query->where('active = 1');
             $query->where('sync_price = 1');
 
-            $result = Db::getInstance()->executeS($query);
+            $result = Db::getInstance()->executeS($query->build());
 
             // Log the query for debugging
             PrestaShopLogger::addLog(
@@ -101,8 +101,8 @@ class SPSRemoteShop extends ObjectModel
         $query->select('*');
         $query->from('stockpricesync_shop');
         $query->where('active = 1');
-        
-        return Db::getInstance()->executeS($query) ?: [];
+
+        return Db::getInstance()->executeS($query->build()) ?: [];
     }
     
     /**
@@ -114,13 +114,13 @@ class SPSRemoteShop extends ObjectModel
         $query->select('id_shop_remote');
         $query->from('stockpricesync_shop');
         $query->where('api_key = "' . pSQL($api_key) . '"');
-        
-        $id_shop_remote = Db::getInstance()->getValue($query);
-        
+
+        $id_shop_remote = Db::getInstance()->getValue($query->build());
+
         if ($id_shop_remote) {
             return new SPSRemoteShop((int)$id_shop_remote);
         }
-        
+
         return false;
     }
     
@@ -134,7 +134,7 @@ class SPSRemoteShop extends ObjectModel
         $query->from('stockpricesync_shop');
         $query->where('api_key = "' . pSQL($api_key) . '"');
         $query->where('active = 0');
-        
-        return (bool)Db::getInstance()->getValue($query);
+
+        return (bool)Db::getInstance()->getValue($query->build());
     }
 }
